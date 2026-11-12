@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Magasin DJ — ERP & Site Web</title>
+<meta name="description" content="Magasin DJ : gestion de stock, ventes, achats, fidélité et bons d'achat, avec site web officiel." />
+<meta name="theme-color" content="#18181b" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2318181b'/%3E%3Ctext x='16' y='22' font-family='Arial,sans-serif' font-size='15' font-weight='800' text-anchor='middle' fill='white'%3EDJ%3C/text%3E%3C/svg%3E" />
+<!-- Version Tailwind épinglée : le rendu ne change pas si la CDN publie une nouvelle version -->
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.10/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+  html, body { font-family: Inter, "Noto Sans Arabic", system-ui, sans-serif; }
+  html[dir=rtl], html[dir=rtl] body { font-family: "Noto Sans Arabic", Inter, system-ui, sans-serif; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .fade-up { animation: fadeUp .25s ease-out both; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 9px; }
+</style>
+</head>
+<body class="bg-zinc-50 text-zinc-900 antialiased">
+<div id="root">
+  <div id="boot" style="display:grid;place-items:center;min-height:100vh;color:#71717a;font-size:14px">Chargement…</div>
+</div>
+<noscript>Activez JavaScript pour utiliser cette application.</noscript>
+<script>
+  // Si une librairie CDN est bloquée (réseau d'entreprise, bloqueur de pub…), on l'explique au lieu d'une page blanche.
+  window.addEventListener('load', function () {
+    setTimeout(function () {
+      var boot = document.getElementById('boot');
+      if (!boot) return;
+      var missing = [];
+      if (!window.React) missing.push('React');
+      if (!window.ReactDOM) missing.push('ReactDOM');
+      if (!window.Babel) missing.push('Babel');
+      if (!window.supabase) missing.push('Supabase');
+      if (!window.tailwind) missing.push('Tailwind CSS');
+      boot.style.textAlign = 'center';
+      boot.innerHTML = missing.length
+        ? '<div><b>Impossible de charger : ' + missing.join(', ') + '</b><br>Vérifiez votre connexion ou autorisez cdnjs.cloudflare.com, cdn.jsdelivr.net et cdn.tailwindcss.com, puis rechargez.</div>'
+        : '<div>Erreur au démarrage de l’application. Ouvrez la console du navigateur (F12) pour le détail.</div>';
+    }, 4000);
+  });
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useContext, createContext, useRef } = React;
+const Ctx = createContext(null);
+const useApp = () => useContext(Ctx);
+
+/* ───────────────────────── Utilitaires ───────────────────────── */
+const KEY = 'magasin-dj-erp-v1';
+const today = () => new Date().toISOString().slice(0, 10);
+const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const uid = (p = '') => p + Math.random().toString(36).slice(2, 8);
+const pad = (n, l = 5) => String(n).padStart(l, '0');
+const fmtNum = n => new Intl.NumberFormat('fr-FR').format(Math.round(n || 0));
+const STATUSES = ['Brouillon', 'Envoyée', 'Confirmée', 'Expédiée', 'Reçue partiellement', 'Reçue'];
+const STATUS_AR = { 'Brouillon': 'مسودة', 'Envoyée': 'مرسلة', 'Confirmée': 'مؤكدة', 'Expédiée': 'تم الشحن', 'Reçue partiellement': 'مستلمة جزئياً', 'Reçue': 'مستلمة' };
+const CATS = ['Hommes', 'Femmes', 'Enfants', 'Accessoires'];
+const CAT_AR = { Hommes: 'رجال', Femmes: 'نساء', Enfants: 'أطفال', Accessoires: 'إكسسوارات', Toutes: 'الكل' };
+const ROLE_LABEL = { admin: ['Magasin · Admin', 'المتجر · المدير'], vendeur: ['Caisse · Vendeur', 'الصندوق · البائع'], fournisseur: ['Portail · Fournisseur', 'بوابة · المورد'], client: ['Boutique · Client', 'المتجر · الزبون'] };
+
+const DEFAULT_RULES = { perDA: 100, redeemValue: 1, tiers: { Silver: 1000, Gold: 3000 }, mult: { Bronze: 1, Silver: 1.25, Gold: 1.5 }, disc: { Bronze: 0, Silver: 3, Gold: 5 } };
+const tierOf = (earned, r) => earned >= r.tiers.Gold ? 'Gold' : earned >= r.tiers.Silver ? 'Silver' : 'Bronze';
+
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+/* ───────────────────────── Supabase (données réelles) ───────────────────────── */
+const SUPABASE_URL = 'https://qzgctowjoordzgtvntvx.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_T1pqZwS_N0UNLjXLXdEWJQ_wKY9bN_B';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'magasin-dj-auth' } });
+const must = async p => { const r = await p; if (r.error) throw r.error; return r.data; };
+
+const CAT_FROM = { hommes: 'Hommes', femmes: 'Femmes', enfants: 'Enfants', accessoires: 'Accessoires' };
+const CAT_TO = { Hommes: 'hommes', Femmes: 'femmes', Enfants: 'enfants', Accessoires: 'accessoires' };
+const PO_FROM = { brouillon: 'Brouillon', envoyee: 'Envoyée', confirmee: 'Confirmée', expediee: 'Expédiée', recue_partiellement: 'Reçue partiellement', recue: 'Reçue' };
+const PO_TO = Object.fromEntries(Object.entries(PO_FROM).map(([k, v]) => [v, k]));
+const BGS = ['bg-slate-100', 'bg-rose-100', 'bg-amber-100', 'bg-emerald-100', 'bg-yellow-100', 'bg-blue-100', 'bg-indigo-100', 'bg-violet-100', 'bg-lime-100', 'bg-red-100'];
+const bgOf = k => BGS[[...String(k)].reduce((a, c) => a + c.charCodeAt(0), 0) % BGS.length];
+const cap = x => x ? x.charAt(0).toUpperCase() + x.slice(1) : 'Bronze';
+const EMPTY_DB = { products: [], suppliers: [], clients: [], sales: [], purchases: [], vouchers: [], rules: DEFAULT_RULES };
+
+const ERR = {
+  INSUFFICIENT_STOCK: ['Stock insuffisant', 'مخزون غير كافٍ'], INSUFFICIENT_POINTS: ['Points insuffisants', 'نقاط غير كافية'],
+  VOUCHER_NOT_FOUND: ['Code introuvable', 'الرمز غير موجود'], VOUCHER_INACTIVE: ['Bon désactivé', 'القسيمة معطلة'],
+  VOUCHER_EXPIRED: ['Bon expiré', 'القسيمة منتهية الصلاحية'], VOUCHER_LIMIT: ["Limite d'utilisation atteinte", 'تم بلوغ حد الاستخدام'],
+  VOUCHER_MIN_TOTAL: ['Montant minimum non atteint', 'الحد الأدنى غير مستوفى'],
+  FORBIDDEN: ['Action non autorisée pour votre rôle', 'إجراء غير مسموح لدورك'], EMPTY_CART: ['Panier vide', 'السلة فارغة'],
+  INVALID_QTY: ['Quantité invalide', 'كمية غير صالحة'], UNKNOWN_PRODUCT: ['Produit introuvable', 'منتج غير موجود'],
+  NOT_FOUND: ['Introuvable', 'غير موجود'], INVALID_TRANSITION: ['Changement de statut impossible', 'تغيير الحالة غير ممكن'],
+  INVALID_STATUS: ['Statut incompatible', 'حالة غير متوافقة'], EMPTY_ORDER: ['Commande vide', 'الطلب فارغ'],
+  NOTHING_TO_RESTOCK: ['Rien à réassortir', 'لا شيء لإعادة تخزينه'],
+};
+const errText = (e, t) => {
+  const m = String((e && (e.message || e.details)) || e);
+  const k = Object.keys(ERR).find(x => m.includes(x));
+  if (k) return t(ERR[k][0], ERR[k][1]);
+  if (/duplicate key/i.test(m)) return t('Cette valeur existe déjà', 'هذه القيمة موجودة بالفعل');
+  if (/row-level security|permission denied/i.test(m)) return t('Action non autorisée pour votre rôle', 'إجراء غير مسموح لدورك');
+  if (/Failed to fetch|NetworkError/i.test(m)) return t('Connexion au serveur impossible', 'تعذر الاتصال بالخادم');
+  return m;
+};
+
+async function loadAll(role) {
+  const rows = async q => (await must(q)) || [];
+  const prodQ = role === 'client' ? sb.from('storefront_products').select('*').order('name') : sb.from('products').select('*').eq('active', true).order('name');
+  const [prods, sups, cls, sales, pos, vs, rl] = await Promise.all([
+    rows(prodQ),
+    rows(sb.from('suppliers').select('*').order('name')),
+    rows(sb.from('clients').select('*').order('name')),
+    rows(sb.from('sales').select('*, sale_items(*)').order('created_at', { ascending: false }).limit(1000)),
+    rows(sb.from('purchase_orders').select('*, purchase_order_items(*)').order('created_at', { ascending: false })),
+    rows(sb.from('vouchers').select('*').order('created_at', { ascending: false })),
+    rows(sb.from('loyalty_rules').select('*').eq('id', 1)),
+  ]);
+  const clients = cls.map(c => ({ id: c.id, name: c.name, email: c.email || '', phone: c.phone || '', earned: c.points_earned_total, pts: c.points_balance, spend: Number(c.total_spent) }));
+  const cname = Object.fromEntries(clients.map(c => [c.id, c.name]));
+  const r = rl[0];
+  return {
+    products: prods.map(p => ({ id: p.id, sku: p.sku, name: p.name, ar: p.name_ar || p.name, cat: CAT_FROM[p.category] || 'Accessoires', price: Number(p.price), cost: Number(p.cost || 0), stock: p.stock, reorder: p.reorder_level, sup: p.supplier_id, fabric: p.fabric || '', color: p.color || '', emoji: p.emoji || '🏷️', bg: bgOf(p.sku) })),
+    suppliers: sups.map(x => ({ id: x.id, name: x.name, contact: x.contact_name || '', email: x.email || '', city: x.city || '', leadDays: x.lead_days, rating: Number(x.rating || 0) })),
+    clients,
+    sales: sales.map(x => ({
+      id: x.id, ref: x.ref, date: x.created_at.slice(0, 10), channel: x.channel === 'web' ? 'Web' : 'POS', clientId: x.client_id,
+      clientName: cname[x.client_id] || 'Client de passage',
+      lines: (x.sale_items || []).map(i => ({ pid: i.product_id, name: i.name, ar: i.name_ar || i.name, qty: i.qty, price: Number(i.unit_price) })),
+      subtotal: Number(x.subtotal), tierDisc: Number(x.tier_discount), voucherDisc: Number(x.voucher_discount), voucher: x.voucher_code,
+      pointsUsed: x.points_used, pointsDisc: Number(x.points_discount), pointsEarned: x.points_earned, total: Number(x.total), tier: cap(x.tier),
+    })),
+    purchases: pos.map(x => ({
+      id: x.id, ref: x.ref, supplierId: x.supplier_id, date: x.created_at.slice(0, 10), expected: x.expected_date || '—', status: PO_FROM[x.status],
+      lines: (x.purchase_order_items || []).map(i => ({ id: i.id, pid: i.product_id, qty: i.qty, received: i.received_qty, cost: Number(i.unit_cost) })),
+    })),
+    vouchers: vs.map(v => ({ id: v.id, code: v.code, kind: v.kind, type: v.discount_type, value: Number(v.value), minTotal: Number(v.min_total), expires: v.expires_at, limit: v.usage_limit, used: v.used_count, active: v.active })),
+    rules: r ? { perDA: r.points_per_da, redeemValue: Number(r.redeem_value), tiers: { Silver: r.silver_threshold, Gold: r.gold_threshold }, mult: { Bronze: 1, Silver: Number(r.mult_silver), Gold: Number(r.mult_gold) }, disc: { Bronze: 0, Silver: Number(r.disc_silver), Gold: Number(r.disc_gold) } } : DEFAULT_RULES,
+  };
+}
+
+/* Champ numérique : n'envoie la valeur au serveur qu'à la validation (Entrée / perte de focus) */
+function NumInput({ value, onCommit, min = 0, className = '' }) {
+  const [v, setV] = useState(String(value));
+  const ref = useRef(value); ref.current = value;
+  useEffect(() => { setV(String(value)); }, [value]);
+  const commit = () => {
+    const n = Math.max(min, Math.floor(Number(v) || 0));
+    if (n === Number(value)) { setV(String(value)); return; }
+    Promise.resolve(onCommit(n)).then(() => setV(String(ref.current)));
+  };
+  return <input type="number" min={min} value={v} onChange={e => setV(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} className={className} />;
+}
+
+/* Calcul d'un panier : remises palier, bon, points, total, points gagnés */
+function checkVoucher(code, vouchers, subtotal, t) {
+  if (!code) return null;
+  const v = vouchers.find(x => x.code === code.trim().toUpperCase());
+  if (!v) return { error: t('Code introuvable', 'الرمز غير موجود') };
+  if (!v.active) return { error: t('Bon désactivé', 'القسيمة معطلة') };
+  if (v.expires < today()) return { error: t('Bon expiré', 'القسيمة منتهية الصلاحية') };
+  if (v.used >= v.limit) return { error: t("Limite d'utilisation atteinte", 'تم بلوغ حد الاستخدام') };
+  if (subtotal < v.minTotal) return { error: t(`Minimum ${fmtNum(v.minTotal)} DA requis`, `الحد الأدنى ${fmtNum(v.minTotal)} د.ج`) };
+  const disc = v.type === 'percent' ? Math.round(subtotal * v.value / 100) : Math.min(v.value, subtotal);
+  return { v, disc };
+}
+
+function quoteSale(db, { cart, clientId, code, usePts }, t) {
+  const lines = cart.map(l => { const p = db.products.find(x => x.id === l.pid); return p ? { pid: p.id, name: p.name, ar: p.ar, qty: l.qty, price: p.price, stock: p.stock } : null; }).filter(Boolean);
+  const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const client = db.clients.find(c => c.id === clientId) || null;
+  const vr = code ? checkVoucher(code, db.vouchers, subtotal, t) : null;
+  const r = db.rules;
+  const tier = client ? tierOf(client.earned, r) : 'Bronze';
+  const voucherDisc = vr && vr.disc ? vr.disc : 0;
+  const tierDisc = Math.round((subtotal - voucherDisc) * r.disc[tier] / 100);
+  const afterDisc = Math.max(0, subtotal - voucherDisc - tierDisc);
+  const pointsUsed = client ? Math.max(0, Math.min(Math.floor(usePts || 0), client.pts, Math.floor(afterDisc / r.redeemValue))) : 0;
+  const pointsDisc = pointsUsed * r.redeemValue;
+  const total = Math.max(0, afterDisc - pointsDisc);
+  const pointsEarned = client ? Math.floor(Math.floor(total / r.perDA) * r.mult[tier]) : 0;
+  const stockErr = lines.find(l => l.qty > l.stock) || null;
+  return { lines, subtotal, client, tier, vr, voucherDisc, tierDisc, pointsUsed, pointsDisc, total, pointsEarned, stockErr, error: vr && vr.error ? vr.error : null };
+}
+
+/* ───────────────────────── Icônes (tracé SVG maison, sans dépendance) ───────────────────────── */
+const IC = {
+  dash: ['M3 3h7v9H3z', 'M14 3h7v5h-7z', 'M14 12h7v9h-7z', 'M3 16h7v5H3z'],
+  box: ['M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z', 'M3.3 7L12 12l8.7-5', 'M12 22V12'],
+  cart: ['M3 3h2l2.4 12.4a2 2 0 0 0 2 1.6h8.7a2 2 0 0 0 2-1.6L22 7H6', 'M9 21h.01', 'M18 21h.01'],
+  bag: ['M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z', 'M3 6h18', 'M16 10a4 4 0 0 1-8 0'],
+  truck: ['M1 3h15v13H1z', 'M16 8h4l3 3v5h-7z', 'M5.5 16.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0', 'M18.5 16.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0'],
+  users: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 11m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0', 'M22 21v-2a4 4 0 0 0-3-3.87', 'M16 3.13a4 4 0 0 1 0 7.75'],
+  receipt: ['M4 2h16v20l-3-2-2.5 2-2.5-2-2.5 2-2.5-2-3 2z', 'M8 7h8', 'M8 11h8', 'M8 15h5'],
+  star: ['M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z'],
+  gift: ['M20 12v10H4V12', 'M2 7h20v5H2z', 'M12 22V7', 'M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z', 'M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z'],
+  store: ['M3 9l1.5-6h15L21 9', 'M3 9h18v3a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0z', 'M5 12v9h14v-9', 'M9 21v-6h6v6'],
+  search: ['M11 19m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0', 'M21 21l-4.3-4.3'],
+  plus: ['M12 5v14', 'M5 12h14'],
+  minus: ['M5 12h14'],
+  trash: ['M3 6h18', 'M8 6V4h8v2', 'M19 6l-1 14H6L5 6'],
+  edit: ['M12 20h9', 'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'],
+  x: ['M18 6L6 18', 'M6 6l12 12'],
+  check: ['M20 6L9 17l-5-5'],
+  bell: ['M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9', 'M13.7 21a2 2 0 0 1-3.4 0'],
+  alert: ['M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z', 'M12 9v4', 'M12 17h.01'],
+  chart: ['M3 3v18h18', 'M7 15l4-4 3 3 5-6'],
+  copy: ['M9 9h11v11H9z', 'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'],
+  refresh: ['M23 4v6h-6', 'M1 20v-6h6', 'M3.5 9a9 9 0 0 1 14.9-3.4L23 10', 'M1 14l4.6 4.4A9 9 0 0 0 20.5 15'],
+  arrow: ['M5 12h14', 'M12 5l7 7-7 7'],
+  send: ['M22 2L11 13', 'M22 2l-7 20-4-9-9-4z'],
+  clock: ['M12 22m-10 0a10 10 0 1 0 20 0a10 10 0 1 0-20 0', 'M12 6v6l4 2'],
+  percent: ['M19 5L5 19', 'M6.5 9m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0', 'M17.5 20m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0'],
+  crown: ['M2 20h20', 'M3 8l4.5 4L12 5l4.5 7L21 8l-2 12H5z'],
+  user: ['M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2', 'M12 11m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0'],
+  eye: ['M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z', 'M12 9m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0'],
+  zap: ['M13 2L3 14h9l-1 8 10-12h-9z'],
+  globe: ['M12 22m-10 0a10 10 0 1 0 20 0a10 10 0 1 0-20 0', 'M2 12h20', 'M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20z'],
+  tag: ['M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z', 'M7 7h.01'],
+};
+function Icon({ n, s = 18, className = '' }) {
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 ${className}`}>{(IC[n] || []).map((d, i) => <path key={i} d={d} />)}</svg>;
+}
+
+/* ───────────────────────── Composants UI ───────────────────────── */
+const Card = ({ children, className = '' }) => <div className={`rounded-2xl border border-zinc-200 bg-white shadow-sm ${className}`}>{children}</div>;
+const Btn = ({ children, v = 'primary', className = '', ...p }) => {
+  const cls = { primary: 'bg-zinc-900 text-white hover:bg-zinc-800', ghost: 'border border-zinc-200 bg-white hover:bg-zinc-50', danger: 'bg-rose-600 text-white hover:bg-rose-500', accent: 'bg-emerald-600 text-white hover:bg-emerald-500', soft: 'bg-zinc-100 text-zinc-800 hover:bg-zinc-200' }[v];
+  return <button {...p} className={`inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-medium transition active:scale-[.98] disabled:pointer-events-none disabled:opacity-40 ${cls} ${className}`}>{children}</button>;
+};
+const Badge = ({ tone = 'zinc', children }) => {
+  const m = { zinc: 'bg-zinc-100 text-zinc-700', green: 'bg-emerald-50 text-emerald-700', red: 'bg-rose-50 text-rose-700', amber: 'bg-amber-50 text-amber-700', blue: 'bg-sky-50 text-sky-700', violet: 'bg-violet-50 text-violet-700', dark: 'bg-zinc-900 text-white' };
+  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${m[tone]}`}>{children}</span>;
+};
+const Input = ({ className = '', ...p }) => <input {...p} className={`w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-900/10 ${className}`} />;
+const Select = ({ children, className = '', ...p }) => <select {...p} className={`w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900/10 ${className}`}>{children}</select>;
+const Field = ({ label, children }) => <label className="block"><span className="mb-1 block text-xs font-medium text-zinc-500">{label}</span>{children}</label>;
+const Modal = ({ title, onClose, children, wide }) => (
+  <div className="fade-up fixed inset-0 z-50 grid place-items-center bg-zinc-900/40 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div onClick={e => e.stopPropagation()} className={`max-h-[90vh] w-full overflow-auto rounded-2xl bg-white shadow-xl ${wide ? 'max-w-2xl' : 'max-w-md'}`}>
+      <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4"><h3 className="font-semibold">{title}</h3><button onClick={onClose} className="rounded-lg p-1 hover:bg-zinc-100"><Icon n="x" /></button></div>
+      <div className="p-5">{children}</div>
+    </div>
+  </div>
+);
+const PageTitle = ({ title, sub, right }) => (
+  <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div><h1 className="text-2xl font-bold tracking-tight">{title}</h1>{sub && <p className="mt-0.5 text-sm text-zinc-500">{sub}</p>}</div>
+    {right}
+  </div>
+);
+const Kpi = ({ label, value, icon, hint, tone = 'zinc' }) => {
+  const m = { zinc: 'bg-zinc-100 text-zinc-700', green: 'bg-emerald-50 text-emerald-700', amber: 'bg-amber-50 text-amber-700', violet: 'bg-violet-50 text-violet-700', blue: 'bg-sky-50 text-sky-700' };
+  return (
+    <Card className="p-5 transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-start justify-between"><span className="text-sm text-zinc-500">{label}</span><span className={`grid h-8 w-8 place-items-center rounded-lg ${m[tone]}`}><Icon n={icon} s={16} /></span></div>
+      <div className="tabular mt-3 text-2xl font-bold tracking-tight">{value}</div>
+      {hint && <div className="mt-1 text-xs text-zinc-400">{hint}</div>}
+    </Card>
+  );
+};
+function StatusBadge({ status }) {
+  const { t, lang } = useApp();
+  const tone = { 'Brouillon': 'zinc', 'Envoyée': 'blue', 'Confirmée': 'violet', 'Expédiée': 'amber', 'Reçue partiellement': 'amber', 'Reçue': 'green' }[status] || 'zinc';
+  return <Badge tone={tone}>{lang === 'ar' ? STATUS_AR[status] : status}</Badge>;
+}
+const stockState = p => p.stock === 0 ? 'rup' : p.stock <= p.reorder ? 'low' : 'ok';
+function StockBadge({ p }) {
+  const { t } = useApp();
+  const s = stockState(p);
+  if (s === 'rup') return <Badge tone="red">{t('Rupture', 'نفاد')}</Badge>;
+  if (s === 'low') return <Badge tone="amber">{t('Stock faible', 'مخزون منخفض')}</Badge>;
+  return <Badge tone="green">{t('OK', 'جيد')}</Badge>;
+}
+function Timeline({ status }) {
+  const { t } = useApp();
+  const steps = [[t('Envoyée', 'مرسلة'), 0], [t('Confirmée', 'مؤكدة'), 1], [t('Expédiée', 'تم الشحن'), 2], [t('Reçue', 'مستلمة'), 3]];
+  const idx = { 'Brouillon': -1, 'Envoyée': 0, 'Confirmée': 1, 'Expédiée': 2, 'Reçue partiellement': 3, 'Reçue': 3 }[status];
+  return (
+    <div className="flex items-center gap-1">
+      {steps.map(([label, i], k) => (
+        <div key={k} className="flex flex-1 items-center gap-1">
+          <div className="flex flex-col items-center gap-1">
+            <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] transition ${idx >= i ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-500'}`}>{idx >= i ? '✓' : ''}</span>
+            <span className="whitespace-nowrap text-[10px] text-zinc-500">{label}</span>
+          </div>
+          {k < steps.length - 1 && <div className={`mb-4 h-0.5 flex-1 rounded transition ${idx > i ? 'bg-emerald-600' : 'bg-zinc-200'}`} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+function BarChart({ data }) {
+  const max = Math.max(1, ...data.map(d => d.v));
+  return (
+    <div className="flex h-44 items-end gap-3">
+      {data.map(d => (
+        <div key={d.k} className="group flex flex-1 flex-col items-center gap-1.5">
+          <div className="tabular text-[10px] text-zinc-500 opacity-0 transition group-hover:opacity-100">{fmtNum(d.v / 1000)}k</div>
+          <div className="w-full rounded-t-lg bg-zinc-900 transition-all duration-500 group-hover:bg-emerald-600" style={{ height: `${Math.max(4, (d.v / max) * 130)}px` }} />
+          <div className="text-[11px] capitalize text-zinc-500">{d.l}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+function Toasts({ list }) {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex flex-col items-center gap-2 px-4">
+      {list.map(x => <div key={x.id} className={`fade-up rounded-xl px-4 py-2.5 text-sm font-medium text-white shadow-lg ${x.tone === 'err' ? 'bg-rose-600' : 'bg-zinc-900'}`}>{x.msg}</div>)}
+    </div>
+  );
+}
+function Notifs() {
+  const { db, t, pn, lang, setView } = useApp();
+  const [open, setOpen] = useState(false);
+  const low = db.products.filter(p => p.stock <= p.reorder);
+  const ship = db.purchases.filter(p => p.status === 'Expédiée');
+  const count = low.length + ship.length;
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(!open)} className="relative rounded-xl p-2 text-zinc-600 hover:bg-zinc-100">
+        <Icon n="bell" s={18} />
+        {count > 0 && <span className="absolute -end-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white">{count}</span>}
+      </button>
+      {open && (
+        <div className="fade-up absolute end-0 z-40 mt-2 w-72 rounded-2xl border border-zinc-200 bg-white p-3 shadow-xl">
+          <div className="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">{t('Notifications', 'الإشعارات')}</div>
+          {low.slice(0, 4).map(p => <div key={p.id} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-zinc-50"><Icon n="alert" s={14} className="text-amber-600" /><span className="truncate">{pn(p)}</span><span className="ms-auto tabular text-xs text-zinc-500">{p.stock} / {p.reorder}</span></div>)}
+          {ship.map(po => <div key={po.id} className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-zinc-50"><Icon n="truck" s={14} className="text-sky-600" /><span>{po.ref}</span><span className="ms-auto text-xs text-zinc-500">{t('À réceptionner', 'للاستلام')}</span></div>)}
+          {count === 0 && <div className="px-2 py-3 text-sm text-zinc-500">{t('Tout est à jour ✓', 'كل شيء محدث ✓')}</div>}
+          <button onClick={() => { setView('stock'); setOpen(false); }} className="mt-1 w-full rounded-lg px-2 py-2 text-start text-xs font-semibold text-zinc-700 hover:bg-zinc-100">{t('Voir le stock →', 'عرض المخزون ←')}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+function ReceiptModal({ sale, onClose }) {
+  const { t, money, lang, toast } = useApp();
+  const txt = [`${t('Magasin DJ', 'متجر DJ')} — ${sale.ref}`, sale.date, sale.clientName, '', ...sale.lines.map(l => `${l.qty} x ${lang === 'ar' ? l.ar : l.name} = ${money(l.qty * l.price)}`), '', `${t('Sous-total', 'المجموع الفرعي')}: ${money(sale.subtotal)}`, sale.tierDisc ? `${t('Remise palier', 'خصم الفئة')}: -${money(sale.tierDisc)}` : '', sale.voucherDisc ? `${t('Bon', 'قسيمة')} ${sale.voucher}: -${money(sale.voucherDisc)}` : '', sale.pointsDisc ? `${t('Points utilisés', 'نقاط مستعملة')}: -${money(sale.pointsDisc)}` : '', `${t('TOTAL', 'الإجمالي')}: ${money(sale.total)}`, sale.pointsEarned ? `${t('Points gagnés', 'نقاط مكتسبة')}: +${sale.pointsEarned}` : ''].filter(x => x !== '').join('\n');
+  return (
+    <Modal title={`${t('Reçu', 'إيصال')} ${sale.ref}`} onClose={onClose}>
+      <div className="mb-4 flex items-center justify-between text-sm text-zinc-500"><span>{sale.date}</span><Badge tone={sale.channel === 'Web' ? 'blue' : 'dark'}>{sale.channel === 'Web' ? t('Site web', 'الموقع') : t('Magasin', 'المتجر')}</Badge></div>
+      <div className="mb-4 text-sm font-medium">{sale.clientName}</div>
+      <div className="divide-y divide-zinc-100 rounded-xl border border-zinc-100">
+        {sale.lines.map((l, i) => <div key={i} className="flex justify-between px-3 py-2 text-sm"><span>{l.qty} × {lang === 'ar' ? l.ar : l.name}</span><span className="tabular">{money(l.qty * l.price)}</span></div>)}
+      </div>
+      <div className="mt-4 space-y-1.5 text-sm">
+        <div className="flex justify-between text-zinc-500"><span>{t('Sous-total', 'المجموع الفرعي')}</span><span className="tabular">{money(sale.subtotal)}</span></div>
+        {sale.tierDisc > 0 && <div className="flex justify-between text-emerald-700"><span>{t('Remise palier', 'خصم الفئة')}</span><span className="tabular">-{money(sale.tierDisc)}</span></div>}
+        {sale.voucherDisc > 0 && <div className="flex justify-between text-emerald-700"><span>{t('Bon', 'قسيمة')} {sale.voucher}</span><span className="tabular">-{money(sale.voucherDisc)}</span></div>}
+        {sale.pointsDisc > 0 && <div className="flex justify-between text-emerald-700"><span>{t('Points utilisés', 'نقاط مستعملة')}</span><span className="tabular">-{money(sale.pointsDisc)}</span></div>}
+        <div className="flex justify-between border-t border-zinc-200 pt-2 text-base font-bold"><span>Total</span><span className="tabular">{money(sale.total)}</span></div>
+        {sale.pointsEarned > 0 && <div className="flex justify-between text-xs text-violet-700"><span>{t('Points gagnés', 'نقاط مكتسبة')}</span><span className="tabular">+{sale.pointsEarned}</span></div>}
+      </div>
+      <div className="mt-5 flex gap-2">
+        <Btn className="flex-1" v="ghost" onClick={() => navigator.clipboard.writeText(txt).then(() => toast(t('Reçu copié', 'تم نسخ الإيصال'))).catch(() => toast(t('Copie indisponible ici', 'النسخ غير متاح هنا'), 'err'))}><Icon n="copy" s={15} />{t('Copier le reçu', 'نسخ الإيصال')}</Btn>
+        <Btn className="flex-1" onClick={onClose}>{t('Fermer', 'إغلاق')}</Btn>
+      </div>
+    </Modal>
+  );
+}
+function VoucherCard({ v }) {
+  const { t, money, toast } = useApp();
+  const val = v.type === 'percent' ? `${v.value} %` : money(v.value);
+  return (
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-600 p-6 text-white shadow-lg">
+      <div className="absolute -end-10 -top-10 h-40 w-40 rounded-full bg-white/5" />
+      <div className="text-xs font-semibold uppercase tracking-[0.2em] text-white/60">{v.kind === 'bon' ? t("Bon d'achat", 'قسيمة شراء') : t('Code promo', 'رمز ترويجي')}</div>
+      <div className="mt-2 text-4xl font-extrabold tracking-tight">{val}</div>
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <div><div className="text-[11px] text-white/60">{t('Code', 'الرمز')}</div><div className="font-mono text-lg font-semibold tracking-wider">{v.code}</div></div>
+        <div className="text-end"><div className="text-[11px] text-white/60">{t('Valable jusqu’au', 'صالحة حتى')}</div><div className="tabular text-sm">{v.expires}</div></div>
+      </div>
+      <Btn v="soft" className="mt-5 w-full bg-white/10 text-white hover:bg-white/20" onClick={() => navigator.clipboard.writeText(v.code).then(() => toast(t('Code copié', 'تم نسخ الرمز'))).catch(() => toast(t('Copie indisponible ici', 'النسخ غير متاح هنا'), 'err'))}><Icon n="copy" s={14} />{t('Copier le code', 'نسخ الرمز')}</Btn>
+    </div>
+  );
+}
+function SalesTable({ rows, onOpen }) {
+  const { t, money, pn, lang } = useApp();
+  if (!rows.length) return <div className="p-8 text-center text-sm text-zinc-500">{t('Aucune vente', 'لا توجد مبيعات')}</div>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500"><tr>
+          {[t('Réf', 'المرجع'), t('Date', 'التاريخ'), t('Canal', 'القناة'), t('Client', 'الزبون'), t('Articles', 'القطع'), t('Remises', 'الخصومات'), t('Total', 'الإجمالي'), t('Points', 'النقاط')].map(h => <th key={h} className="px-4 py-3 text-start font-semibold">{h}</th>)}
+        </tr></thead>
+        <tbody className="divide-y divide-zinc-100">
+          {rows.map(s => {
+            const disc = s.tierDisc + s.voucherDisc + s.pointsDisc;
+            return (
+              <tr key={s.id} onClick={() => onOpen && onOpen(s)} className="cursor-pointer transition hover:bg-zinc-50">
+                <td className="px-4 py-3 font-mono text-xs font-semibold">{s.ref}</td>
+                <td className="tabular px-4 py-3 text-zinc-600">{s.date}</td>
+                <td className="px-4 py-3"><Badge tone={s.channel === 'Web' ? 'blue' : 'dark'}>{s.channel === 'Web' ? t('Web', 'ويب') : t('Magasin', 'المتجر')}</Badge></td>
+                <td className="px-4 py-3">{s.clientName}</td>
+                <td className="px-4 py-3 text-zinc-600">{s.lines.reduce((a, l) => a + l.qty, 0)}</td>
+                <td className="tabular px-4 py-3 text-zinc-500">{disc ? `-${money(disc)}` : '—'}</td>
+                <td className="tabular px-4 py-3 font-semibold">{money(s.total)}</td>
+                <td className="tabular px-4 py-3">{s.pointsEarned ? <span className="text-violet-700">+{s.pointsEarned}</span> : '—'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function SupplierSelect() {
+  const { db, supplierId, setSupplierId, t } = useApp();
+  return (
+    <Field label={t('Connecté en tant que fournisseur', 'مسجل الدخول كمورد')}>
+      <Select value={supplierId} onChange={e => setSupplierId(e.target.value)} className="sm:w-72">
+        {db.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </Select>
+    </Field>
+  );
+}
+
+/* ───────────────────────── Tableau de bord ───────────────────────── */
+function Dashboard() {
+  const { db, t, money, pn, lang, setView } = useApp();
+  const revenue = db.sales.reduce((s, x) => s + x.total, 0);
+  const stockValue = db.products.reduce((s, p) => s + p.stock * p.cost, 0);
+  const activePts = db.clients.reduce((s, c) => s + c.pts, 0);
+  const redeemed = db.sales.filter(s => s.voucher).length;
+  const webShare = revenue ? Math.round(db.sales.filter(s => s.channel === 'Web').reduce((s, x) => s + x.total, 0) / revenue * 100) : 0;
+  const days = [...Array(7)].map((_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (6 - i));
+    const k = d.toISOString().slice(0, 10);
+    return { k, l: d.toLocaleDateString(lang === 'ar' ? 'ar' : 'fr-FR', { weekday: 'short' }), v: db.sales.filter(s => s.date === k).reduce((a, s) => a + s.total, 0) };
+  });
+  const sold = {};
+  db.sales.forEach(s => s.lines.forEach(l => { sold[l.pid] = (sold[l.pid] || 0) + l.qty; }));
+  const top = Object.entries(sold).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([pid, q]) => ({ p: db.products.find(x => x.id === pid), q })).filter(x => x.p);
+  const byCat = CATS.map(c => ({ c, v: db.products.filter(p => p.cat === c).reduce((s, p) => s + p.stock * p.cost, 0) }));
+  const maxCat = Math.max(1, ...byCat.map(x => x.v));
+  const low = db.products.filter(p => p.stock <= p.reorder);
+  return (
+    <div>
+      <PageTitle title={t('Tableau de bord', 'لوحة القيادة')} sub={t("Vue d'ensemble du magasin et du site web", 'نظرة عامة على المتجر والموقع')} />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Kpi label={t("Chiffre d'affaires", 'رقم المعاملات')} value={money(revenue)} icon="chart" tone="green" hint={`${t('Web', 'ويب')} ${webShare}%`} />
+        <Kpi label={t('Valeur du stock', 'قيمة المخزون')} value={money(stockValue)} icon="box" tone="blue" hint={`${db.products.length} ${t('références', 'مرجعاً')}`} />
+        <Kpi label={t('Points fidélité actifs', 'نقاط الولاء النشطة')} value={fmtNum(activePts)} icon="star" tone="violet" hint={`${db.clients.length} ${t('clients', 'زبائن')}`} />
+        <Kpi label={t("Bons d'achat utilisés", 'قسائم مستعملة')} value={redeemed} icon="gift" tone="amber" hint={`${db.vouchers.filter(v => v.active).length} ${t('actifs', 'نشطة')}`} />
+      </div>
+      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+        <Card className="p-5 xl:col-span-2">
+          <div className="mb-4 flex items-center justify-between"><h2 className="font-semibold">{t('Ventes des 7 derniers jours', 'مبيعات آخر 7 أيام')}</h2><Badge>{money(days.reduce((a, d) => a + d.v, 0))}</Badge></div>
+          <BarChart data={days} />
+        </Card>
+        <Card className="p-5">
+          <h2 className="mb-4 font-semibold">{t('Valeur du stock par catégorie', 'قيمة المخزون حسب الفئة')}</h2>
+          <div className="space-y-3">
+            {byCat.map(x => (
+              <div key={x.c}>
+                <div className="mb-1 flex justify-between text-sm"><span>{lang === 'ar' ? CAT_AR[x.c] : x.c}</span><span className="tabular text-zinc-500">{money(x.v)}</span></div>
+                <div className="h-2 rounded-full bg-zinc-100"><div className="h-2 rounded-full bg-zinc-900 transition-all duration-700" style={{ width: `${(x.v / maxCat) * 100}%` }} /></div>
+              </div>
+            ))}
+          </div>
+        </Card>
+        <Card className="p-5">
+          <h2 className="mb-3 font-semibold">{t('Produits les plus vendus', 'الأكثر مبيعاً')}</h2>
+          <ol className="space-y-2.5">
+            {top.map((x, i) => <li key={x.p.id} className="flex items-center gap-3 text-sm"><span className="grid h-6 w-6 place-items-center rounded-full bg-zinc-100 text-xs font-semibold">{i + 1}</span><span className="text-lg">{x.p.emoji}</span><span className="truncate">{pn(x.p)}</span><span className="tabular ms-auto text-zinc-500">{x.q} {t('vendus', 'مباعة')}</span></li>)}
+          </ol>
+        </Card>
+        <Card className="p-5 xl:col-span-2">
+          <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">{t('Alertes de réassort', 'تنبيهات إعادة التخزين')}</h2><Btn v="ghost" onClick={() => setView('achat')}>{t('Ouvrir Achat', 'فتح المشتريات')}<Icon n="arrow" s={14} className="rtl:rotate-180" /></Btn></div>
+          {low.length === 0 ? <p className="text-sm text-zinc-500">{t('Aucune alerte', 'لا توجد تنبيهات')}</p> :
+            <div className="grid gap-2 sm:grid-cols-2">
+              {low.map(p => <div key={p.id} className="flex items-center gap-3 rounded-xl border border-zinc-100 p-3"><span className={`grid h-9 w-9 place-items-center rounded-lg text-lg ${p.bg}`}>{p.emoji}</span><div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{pn(p)}</div><div className="text-xs text-zinc-500">{t('Stock', 'المخزون')} {p.stock} · {t('seuil', 'الحد')} {p.reorder}</div></div><StockBadge p={p} /></div>)}
+            </div>}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Stock ───────────────────────── */
+function AddProductModal({ onClose }) {
+  const { db, act, toast, t } = useApp();
+  const [f, setF] = useState({ name: '', ar: '', sku: '', cat: 'Hommes', price: 0, cost: 0, stock: 0, reorder: 5, sup: db.suppliers[0]?.id || '', fabric: '', color: '', emoji: '🏷️' });
+  const set = (k, v) => setF(x => ({ ...x, [k]: v }));
+  const save = async () => {
+    if (!f.name.trim() || !f.sku.trim()) { toast(t('Nom et SKU requis', 'الاسم والرمز مطلوبان'), 'err'); return; }
+    if (db.products.some(p => p.sku === f.sku.trim())) { toast(t('SKU déjà utilisé', 'الرمز مستعمل'), 'err'); return; }
+    const done = await act(async () => {
+      const row = await must(sb.from('products').insert({ sku: f.sku.trim().toUpperCase(), name: f.name.trim(), name_ar: f.ar.trim() || null, category: CAT_TO[f.cat], price: +f.price || 0, cost: +f.cost || 0, reorder_level: Math.max(0, Math.floor(+f.reorder) || 0), supplier_id: f.sup || null, fabric: f.fabric || null, color: f.color || null, emoji: f.emoji || '🏷️' }).select('id').single());
+      if ((+f.stock || 0) > 0) await must(sb.rpc('set_stock', { p_product_id: row.id, p_stock: Math.floor(+f.stock), p_note: 'Stock initial' }));
+    }, t('Produit ajouté', 'تمت إضافة المنتج'));
+    if (done) onClose();
+  };
+  return (
+    <Modal title={t('Nouveau produit', 'منتج جديد')} onClose={onClose} wide>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label={t('Nom', 'الاسم')}><Input value={f.name} onChange={e => set('name', e.target.value)} /></Field>
+        <Field label={t('Nom (arabe)', 'الاسم بالعربية')}><Input value={f.ar} onChange={e => set('ar', e.target.value)} dir="rtl" /></Field>
+        <Field label="SKU"><Input value={f.sku} onChange={e => set('sku', e.target.value)} placeholder="ABC-013" /></Field>
+        <Field label={t('Catégorie', 'الفئة')}><Select value={f.cat} onChange={e => set('cat', e.target.value)}>{CATS.map(c => <option key={c}>{c}</option>)}</Select></Field>
+        <Field label={t('Prix de vente (DA)', 'سعر البيع (د.ج)')}><Input type="number" value={f.price} onChange={e => set('price', e.target.value)} /></Field>
+        <Field label={t("Coût d'achat (DA)", 'تكلفة الشراء (د.ج)')}><Input type="number" value={f.cost} onChange={e => set('cost', e.target.value)} /></Field>
+        <Field label={t('Stock initial', 'المخزون الأولي')}><Input type="number" value={f.stock} onChange={e => set('stock', e.target.value)} /></Field>
+        <Field label={t('Seuil de réassort', 'حد إعادة التخزين')}><Input type="number" value={f.reorder} onChange={e => set('reorder', e.target.value)} /></Field>
+        <Field label={t('Fournisseur', 'المورد')}><Select value={f.sup} onChange={e => set('sup', e.target.value)}>{db.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+        <Field label={t('Tissu', 'القماش')}><Input value={f.fabric} onChange={e => set('fabric', e.target.value)} /></Field>
+      </div>
+      <div className="mt-5 flex justify-end gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn onClick={save}><Icon n="check" s={15} />{t('Enregistrer', 'حفظ')}</Btn></div>
+    </Modal>
+  );
+}
+function StockView({ readonly }) {
+  const { db, act, t, pn, money, toast, lang } = useApp();
+  const [q, setQ] = useState('');
+  const [cat, setCat] = useState('Toutes');
+  const [sel, setSel] = useState({});
+  const [delta, setDelta] = useState(10);
+  const [adding, setAdding] = useState(false);
+  const rows = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar + p.sku).toLowerCase().includes(q.toLowerCase())));
+  const totalValue = db.products.reduce((s, p) => s + p.stock * p.cost, 0);
+  const lowCount = db.products.filter(p => p.stock <= p.reorder).length;
+  const selIds = Object.keys(sel).filter(k => sel[k]);
+  const setStock = (id, v) => act(() => must(sb.rpc('set_stock', { p_product_id: id, p_stock: Math.max(0, Math.floor(Number(v) || 0)) })), t('Stock mis à jour', 'تم تحديث المخزون'));
+  const batch = async sign => {
+    const n = Math.floor(Number(delta) || 0);
+    const items = db.products.filter(p => sel[p.id]).map(p => ({ product_id: p.id, delta: Math.max(-p.stock, sign * n) })).filter(i => i.delta !== 0);
+    if (!items.length) { toast(t('Aucun changement à appliquer', 'لا توجد تغييرات'), 'err'); return; }
+    const done = await act(() => must(sb.rpc('adjust_stock', { p_items: items, p_note: 'Ajustement groupé' })), t(`${items.length} produit(s) mis à jour`, `تم تحديث ${items.length} منتج`));
+    if (done) setSel({});
+  };
+  const allOn = rows.length && rows.every(p => sel[p.id]);
+  return (
+    <div>
+      <PageTitle title={t('Gestion de stock', 'إدارة المخزون')} sub={t('Stock en temps réel · Vente −, Achat réceptionné +', 'مخزون لحظي · البيع يخصم والاستلام يضيف')}
+        right={!readonly && <Btn onClick={() => setAdding(true)}><Icon n="plus" s={15} />{t('Produit', 'منتج')}</Btn>} />
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <Card className="p-4"><div className="text-xs text-zinc-500">{t('Valeur du stock (coût)', 'قيمة المخزون (التكلفة)')}</div><div className="tabular mt-1 text-xl font-bold">{money(totalValue)}</div></Card>
+        <Card className="p-4"><div className="text-xs text-zinc-500">{t('Références', 'المراجع')}</div><div className="tabular mt-1 text-xl font-bold">{db.products.length}</div></Card>
+        <Card className={`p-4 ${lowCount ? 'border-amber-300 bg-amber-50' : ''}`}><div className="text-xs text-zinc-500">{t('Alertes stock faible', 'تنبيهات المخزون المنخفض')}</div><div className="tabular mt-1 flex items-center gap-2 text-xl font-bold">{lowCount > 0 && <Icon n="alert" s={18} className="text-amber-600" />}{lowCount}</div></Card>
+      </div>
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 p-3">
+          <div className="relative min-w-48 flex-1"><Icon n="search" s={15} className="absolute start-3 top-2.5 text-zinc-400" /><Input value={q} onChange={e => setQ(e.target.value)} placeholder={t('Rechercher nom ou SKU…', 'ابحث بالاسم أو الرمز…')} className="ps-9" /></div>
+          <div className="flex flex-wrap gap-1.5">
+            {['Toutes', ...CATS].map(c => <button key={c} onClick={() => setCat(c)} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${cat === c ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{lang === 'ar' ? CAT_AR[c] : c}</button>)}
+          </div>
+        </div>
+        {!readonly && selIds.length > 0 && (
+          <div className="fade-up flex flex-wrap items-center gap-2 bg-zinc-900 px-4 py-2.5 text-sm text-white">
+            <span className="font-medium">{selIds.length} {t('sélectionné(s)', 'محدد')}</span>
+            <div className="ms-auto flex items-center gap-2">
+              <Input type="number" min="1" value={delta} onChange={e => setDelta(e.target.value)} className="w-20 bg-white text-zinc-900" />
+              <Btn v="soft" onClick={() => batch(-1)} className="bg-white/10 text-white hover:bg-white/20"><Icon n="minus" s={14} />{t('Retirer', 'سحب')}</Btn>
+              <Btn v="soft" onClick={() => batch(1)} className="bg-white/10 text-white hover:bg-white/20"><Icon n="plus" s={14} />{t('Ajouter', 'إضافة')}</Btn>
+              <button onClick={() => setSel({})} className="px-2 text-white/70 hover:text-white">{t('Annuler', 'إلغاء')}</button>
+            </div>
+          </div>
+        )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500"><tr>
+              {!readonly && <th className="w-10 px-4 py-3"><input type="checkbox" checked={!!allOn} onChange={e => { const n = {}; if (e.target.checked) rows.forEach(p => n[p.id] = true); setSel(n); }} /></th>}
+              {[t('SKU', 'الرمز'), t('Produit', 'المنتج'), t('Catégorie', 'الفئة'), t('Stock', 'المخزون'), t('Seuil', 'الحد'), t('Valeur', 'القيمة'), t('Statut', 'الحالة')].map(h => <th key={h} className="px-4 py-3 text-start font-semibold">{h}</th>)}
+            </tr></thead>
+            <tbody className="divide-y divide-zinc-100">
+              {rows.map(p => (
+                <tr key={p.id} className="transition hover:bg-zinc-50">
+                  {!readonly && <td className="px-4 py-3"><input type="checkbox" checked={!!sel[p.id]} onChange={e => setSel({ ...sel, [p.id]: e.target.checked })} /></td>}
+                  <td className="px-4 py-3 font-mono text-xs">{p.sku}</td>
+                  <td className="px-4 py-3"><div className="flex items-center gap-2.5"><span className={`grid h-8 w-8 place-items-center rounded-lg text-base ${p.bg}`}>{p.emoji}</span><div><div className="font-medium">{pn(p)}</div><div className="text-xs text-zinc-500">{p.fabric} · {p.color}</div></div></div></td>
+                  <td className="px-4 py-3 text-zinc-600">{lang === 'ar' ? CAT_AR[p.cat] : p.cat}</td>
+                  <td className="px-4 py-3">{readonly ? <span className="tabular font-semibold">{p.stock}</span> : <NumInput value={p.stock} onCommit={v => setStock(p.id, v)} className="tabular w-20 rounded-lg border border-zinc-200 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-zinc-900/10" />}</td>
+                  <td className="tabular px-4 py-3 text-zinc-500">{p.reorder}</td>
+                  <td className="tabular px-4 py-3">{money(p.stock * p.cost)}</td>
+                  <td className="px-4 py-3"><StockBadge p={p} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {rows.length === 0 && <div className="p-8 text-center text-sm text-zinc-500">{t('Aucun produit', 'لا توجد منتجات')}</div>}
+        </div>
+      </Card>
+      {adding && <AddProductModal onClose={() => setAdding(false)} />}
+    </div>
+  );
+}
+
+/* ───────────────────────── Achat ───────────────────────── */
+function ReceiveModal({ po, onClose }) {
+  const { db, act, toast, t, pn } = useApp();
+  const [q, setQ] = useState(() => po.lines.map(l => l.qty - l.received));
+  const confirm = async () => {
+    const items = po.lines.map((l, i) => ({ item_id: l.id, qty: Math.min(l.qty - l.received, Math.max(0, Math.floor(Number(q[i]) || 0))) })).filter(x => x.qty > 0);
+    if (!items.length) { toast(t('Aucune quantité à réceptionner', 'لا توجد كمية للاستلام'), 'err'); return; }
+    const added = items.reduce((a, x) => a + x.qty, 0);
+    const done = await act(() => must(sb.rpc('receive_purchase', { p_po_id: po.id, p_items: items })), t(`${added} unité(s) ajoutée(s) au stock`, `تمت إضافة ${added} وحدة إلى المخزون`));
+    if (done) onClose();
+  };
+  return (
+    <Modal title={`${t('Réception', 'الاستلام')} ${po.ref}`} onClose={onClose}>
+      <div className="space-y-2">
+        {po.lines.map((l, i) => {
+          const p = db.products.find(x => x.id === l.pid);
+          return (
+            <div key={i} className="flex items-center gap-3 rounded-xl border border-zinc-100 p-3">
+              <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{p ? pn(p) : l.pid}</div><div className="text-xs text-zinc-500">{t('Reçu', 'مستلم')} {l.received} / {l.qty}</div></div>
+              <Input type="number" min="0" max={l.qty - l.received} value={q[i]} onChange={e => setQ(q.map((v, k) => k === i ? e.target.value : v))} className="w-24" />
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-5 flex justify-end gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn v="accent" onClick={confirm}><Icon n="check" s={15} />{t('Valider la réception', 'تأكيد الاستلام')}</Btn></div>
+    </Modal>
+  );
+}
+function Achats() {
+  const { db, act, t, pn, money, toast, lang } = useApp();
+  const [supId, setSupId] = useState(db.suppliers[0]?.id || '');
+  const [expected, setExpected] = useState(addDays(5));
+  const [lines, setLines] = useState([]);
+  const [pick, setPick] = useState(db.products[0]?.id || '');
+  const [pq, setPq] = useState(10);
+  const [recv, setRecv] = useState(null);
+  const supName = id => db.suppliers.find(s => s.id === id)?.name || '—';
+  const lineTotal = l => l.qty * l.cost;
+  const addLine = () => {
+    const p = db.products.find(x => x.id === pick);
+    if (!p) return;
+    setLines(l => [...l, { pid: p.id, qty: Math.max(1, Number(pq) || 1), cost: p.cost }]);
+  };
+  const createPO = async status => {
+    if (!lines.length) { toast(t('Ajoutez au moins une ligne', 'أضف سطراً واحداً على الأقل'), 'err'); return; }
+    if (!supId) { toast(t('Choisissez un fournisseur', 'اختر موردا'), 'err'); return; }
+    const done = await act(() => must(sb.rpc('create_purchase_order', { p_supplier_id: supId, p_expected: expected || null, p_items: lines.map(l => ({ product_id: l.pid, qty: l.qty, unit_cost: l.cost })), p_send: status !== 'Brouillon' })),
+      status === 'Brouillon' ? t('Brouillon enregistré', 'تم حفظ المسودة') : t('Bon de commande envoyé au fournisseur', 'تم إرسال طلب الشراء إلى المورد'));
+    if (done) setLines([]);
+  };
+  const createRestock = (supplierId, items) => act(() => must(sb.rpc('create_purchase_order', { p_supplier_id: supplierId, p_expected: null, p_items: items.map(p => ({ product_id: p.id, qty: Math.max(p.reorder * 2 - p.stock, p.reorder), unit_cost: p.cost })), p_send: false })), t('Brouillon de réassort créé', 'تم إنشاء مسودة إعادة التخزين'));
+  const send = id => act(() => must(sb.rpc('set_po_status', { p_po_id: id, p_status: 'envoyee' })), t('Bon de commande envoyé au fournisseur', 'تم إرسال طلب الشراء إلى المورد'));
+  const low = db.products.filter(p => p.stock <= p.reorder);
+  const groups = db.suppliers.map(s => ({ s, items: low.filter(p => p.sup === s.id) })).filter(g => g.items.length);
+  const openPOs = db.purchases.filter(p => ['Envoyée', 'Confirmée', 'Expédiée', 'Reçue partiellement'].includes(p.status)).length;
+  return (
+    <div>
+      <PageTitle title={t('Achat · Bons de commande', 'المشتريات · طلبات الشراء')} sub={t('Créer, envoyer et réceptionner les commandes fournisseurs', 'إنشاء الطلبات للموردين وإرسالها واستلامها')} />
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <Kpi label={t('Commandes ouvertes', 'طلبات مفتوحة')} value={openPOs} icon="truck" tone="blue" />
+        <Kpi label={t('Brouillons', 'مسودات')} value={db.purchases.filter(p => p.status === 'Brouillon').length} icon="edit" tone="zinc" />
+        <Kpi label={t('Réassort requis', 'إعادة تخزين مطلوبة')} value={low.length} icon="alert" tone="amber" hint={t('Stock ≤ seuil', 'المخزون ≤ الحد')} />
+      </div>
+      {groups.length > 0 && (
+        <Card className="mb-4 p-5">
+          <h2 className="mb-3 font-semibold">{t('Réassort suggéré', 'إعادة التخزين المقترحة')}</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            {groups.map(g => (
+              <div key={g.s.id} className="rounded-xl border border-zinc-100 p-4">
+                <div className="mb-2 flex items-center justify-between"><span className="font-medium">{g.s.name}</span><span className="text-xs text-zinc-500">{t('Délai', 'المهلة')} {g.s.leadDays} j</span></div>
+                <div className="mb-3 space-y-1 text-sm text-zinc-600">{g.items.map(p => <div key={p.id} className="flex justify-between"><span className="truncate">{pn(p)}</span><span className="tabular">{p.stock} → {Math.max(p.reorder * 2 - p.stock, p.reorder)}</span></div>)}</div>
+                <Btn v="soft" className="w-full" onClick={() => createRestock(g.s.id, g.items)}><Icon n="plus" s={14} />{t('Créer un brouillon', 'إنشاء مسودة')}</Btn>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+      <Card className="mb-4 p-5">
+        <h2 className="mb-3 font-semibold">{t('Nouveau bon de commande', 'طلب شراء جديد')}</h2>
+        <div className="grid gap-3 md:grid-cols-4">
+          <Field label={t('Fournisseur', 'المورد')}><Select value={supId} onChange={e => setSupId(e.target.value)}>{db.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+          <Field label={t('Livraison prévue', 'التسليم المتوقع')}><Input type="date" value={expected} onChange={e => setExpected(e.target.value)} /></Field>
+          <Field label={t('Produit', 'المنتج')}><Select value={pick} onChange={e => setPick(e.target.value)}>{db.products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>)}</Select></Field>
+          <div className="flex items-end gap-2"><Field label={t('Quantité', 'الكمية')}><Input type="number" min="1" value={pq} onChange={e => setPq(e.target.value)} /></Field><Btn v="soft" onClick={addLine} className="mb-px"><Icon n="plus" s={14} />{t('Ligne', 'سطر')}</Btn></div>
+        </div>
+        {lines.length > 0 && (
+          <div className="mt-4 divide-y divide-zinc-100 rounded-xl border border-zinc-100">
+            {lines.map((l, i) => { const p = db.products.find(x => x.id === l.pid); return (
+              <div key={i} className="flex items-center gap-3 px-3 py-2 text-sm">
+                <span className="flex-1 truncate">{p && pn(p)}</span>
+                <span className="tabular text-zinc-500">{l.qty} × {money(l.cost)}</span>
+                <span className="tabular w-28 text-end font-semibold">{money(lineTotal(l))}</span>
+                <button onClick={() => setLines(lines.filter((_, k) => k !== i))} className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 hover:text-rose-600"><Icon n="trash" s={14} /></button>
+              </div>); })}
+            <div className="flex items-center justify-between bg-zinc-50 px-3 py-2 text-sm font-semibold"><span>{supName(supId)}</span><span className="tabular">{money(lines.reduce((s, l) => s + lineTotal(l), 0))}</span></div>
+          </div>
+        )}
+        <div className="mt-4 flex flex-wrap justify-end gap-2">
+          <Btn v="ghost" onClick={() => createPO('Brouillon')}>{t('Enregistrer brouillon', 'حفظ كمسودة')}</Btn>
+          <Btn onClick={() => createPO('Envoyée')}><Icon n="send" s={14} />{t('Envoyer au fournisseur', 'إرسال إلى المورد')}</Btn>
+        </div>
+      </Card>
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500"><tr>
+              {[t('Référence', 'المرجع'), t('Fournisseur', 'المورد'), t('Date', 'التاريخ'), t('Livraison', 'التسليم'), t('Quantités', 'الكميات'), t('Montant', 'المبلغ'), t('Statut', 'الحالة'), ''].map((h, i) => <th key={i} className="px-4 py-3 text-start font-semibold">{h}</th>)}
+            </tr></thead>
+            <tbody className="divide-y divide-zinc-100">
+              {db.purchases.map(po => {
+                const qty = po.lines.reduce((s, l) => s + l.qty, 0), rec = po.lines.reduce((s, l) => s + l.received, 0);
+                return (
+                  <tr key={po.id} className="transition hover:bg-zinc-50">
+                    <td className="px-4 py-3 font-mono text-xs font-semibold">{po.ref}</td>
+                    <td className="px-4 py-3">{supName(po.supplierId)}</td>
+                    <td className="tabular px-4 py-3 text-zinc-600">{po.date}</td>
+                    <td className="tabular px-4 py-3 text-zinc-600">{po.expected}</td>
+                    <td className="tabular px-4 py-3">{rec} / {qty}</td>
+                    <td className="tabular px-4 py-3 font-medium">{money(po.lines.reduce((s, l) => s + lineTotal(l), 0))}</td>
+                    <td className="px-4 py-3"><StatusBadge status={po.status} /></td>
+                    <td className="px-4 py-3 text-end">
+                      {po.status === 'Brouillon' && <Btn v="soft" onClick={() => send(po.id)}><Icon n="send" s={13} />{t('Envoyer', 'إرسال')}</Btn>}
+                      {['Envoyée', 'Confirmée', 'Expédiée', 'Reçue partiellement'].includes(po.status) && <Btn v="accent" onClick={() => setRecv(po)}><Icon n="check" s={13} />{t('Réceptionner', 'استلام')}</Btn>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+      {recv && <ReceiveModal po={recv} onClose={() => setRecv(null)} />}
+    </div>
+  );
+}
+
+/* ───────────────────────── Fournisseurs ───────────────────────── */
+function Fournisseurs() {
+  const { db, act, t, pn, money, toast, lang } = useApp();
+  const [adding, setAdding] = useState(false);
+  const [f, setF] = useState({ name: '', contact: '', email: '', city: '', leadDays: 5 });
+  const save = async () => {
+    if (!f.name.trim()) { toast(t('Nom requis', 'الاسم مطلوب'), 'err'); return; }
+    const done = await act(() => must(sb.from('suppliers').insert({ name: f.name.trim(), contact_name: f.contact || null, email: f.email || null, city: f.city || null, lead_days: Math.max(1, Math.floor(+f.leadDays) || 5) })), t('Fournisseur ajouté', 'تمت إضافة المورد'));
+    if (done) { setF({ name: '', contact: '', email: '', city: '', leadDays: 5 }); setAdding(false); }
+  };
+  return (
+    <div>
+      <PageTitle title={t('Fournisseurs', 'الموردون')} sub={t('Tarifs, délais de livraison et historique de réassort', 'الأسعار ومهل التسليم وسجل إعادة التخزين')}
+        right={<Btn onClick={() => setAdding(!adding)}><Icon n="plus" s={15} />{t('Fournisseur', 'مورد')}</Btn>} />
+      {adding && (
+        <Card className="fade-up mb-4 p-5"><div className="grid gap-3 md:grid-cols-5">
+          <Field label={t('Nom', 'الاسم')}><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
+          <Field label={t('Contact', 'جهة الاتصال')}><Input value={f.contact} onChange={e => setF({ ...f, contact: e.target.value })} /></Field>
+          <Field label="Email"><Input value={f.email} onChange={e => setF({ ...f, email: e.target.value })} /></Field>
+          <Field label={t('Ville', 'المدينة')}><Input value={f.city} onChange={e => setF({ ...f, city: e.target.value })} /></Field>
+          <Field label={t('Délai (jours)', 'المهلة (أيام)')}><Input type="number" value={f.leadDays} onChange={e => setF({ ...f, leadDays: e.target.value })} /></Field>
+        </div><div className="mt-4 flex justify-end"><Btn onClick={save}>{t('Ajouter', 'إضافة')}</Btn></div></Card>
+      )}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {db.suppliers.map(s => {
+          const pos = db.purchases.filter(p => p.supplierId === s.id);
+          const spent = pos.reduce((a, po) => a + po.lines.reduce((x, l) => x + l.qty * l.cost, 0), 0);
+          const prods = db.products.filter(p => p.sup === s.id);
+          return (
+            <Card key={s.id} className="p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div><div className="font-semibold">{s.name}</div><div className="text-xs text-zinc-500">{s.contact} · {s.city} · {s.email}</div></div>
+                <Badge tone="amber">★ {s.rating || '—'}</Badge>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+                <div className="rounded-xl bg-zinc-50 p-3"><div className="text-[11px] text-zinc-500">{t('Délai', 'المهلة')}</div><label className="mt-1 flex items-center justify-center gap-1"><NumInput value={s.leadDays} min={1} onCommit={v => act(() => must(sb.from('suppliers').update({ lead_days: v }).eq('id', s.id)), t('Délai mis à jour', 'تم تحديث المهلة'))} className="tabular w-12 rounded-md border border-zinc-200 bg-white px-1 text-center text-sm" /><span className="text-xs">j</span></label></div>
+                <div className="rounded-xl bg-zinc-50 p-3"><div className="text-[11px] text-zinc-500">{t('Commandes', 'الطلبات')}</div><div className="tabular mt-1 font-semibold">{pos.length}</div></div>
+                <div className="rounded-xl bg-zinc-50 p-3"><div className="text-[11px] text-zinc-500">{t('Total achats', 'إجمالي المشتريات')}</div><div className="tabular mt-1 text-sm font-semibold">{money(spent)}</div></div>
+              </div>
+              <div className="mt-4">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">{t('Tarifs fournisseur', 'أسعار المورد')}</div>
+                <div className="space-y-1.5">
+                  {prods.map(p => <div key={p.id} className="flex items-center gap-2 text-sm"><span>{p.emoji}</span><span className="truncate">{pn(p)}</span><span className="tabular ms-auto text-zinc-500">{money(p.cost)}</span></div>)}
+                  {prods.length === 0 && <div className="text-sm text-zinc-400">—</div>}
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Ventes (admin) ───────────────────────── */
+function Ventes() {
+  const { db, t, money, setReceipt } = useApp();
+  const [ch, setCh] = useState('Tous');
+  const rows = db.sales.filter(s => ch === 'Tous' || s.channel === ch);
+  const rev = rows.reduce((s, x) => s + x.total, 0);
+  const web = db.sales.filter(s => s.channel === 'Web').length;
+  return (
+    <div>
+      <PageTitle title={t('Ventes', 'المبيعات')} sub={t('Magasin et site web · cliquez une ligne pour le reçu', 'المتجر والموقع · انقر على سطر لعرض الإيصال')} />
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <Kpi label={t('Chiffre affiché', 'المبلغ المعروض')} value={money(rev)} icon="chart" tone="green" />
+        <Kpi label={t('Transactions', 'المعاملات')} value={rows.length} icon="receipt" tone="blue" />
+        <Kpi label={t('Ticket moyen', 'متوسط السلة')} value={money(rows.length ? rev / rows.length : 0)} icon="tag" tone="violet" hint={`${t('Web', 'ويب')}: ${web}`} />
+      </div>
+      <Card className="overflow-hidden">
+        <div className="flex gap-1.5 border-b border-zinc-100 p-3">
+          {['Tous', 'POS', 'Web'].map(c => <button key={c} onClick={() => setCh(c)} className={`rounded-full px-3 py-1.5 text-xs font-medium ${ch === c ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{c === 'POS' ? t('Magasin', 'المتجر') : c === 'Web' ? t('Site web', 'الموقع') : t('Tous', 'الكل')}</button>)}
+        </div>
+        <SalesTable rows={rows} onOpen={setReceipt} />
+      </Card>
+    </div>
+  );
+}
+
+/* ───────────────────────── Fidélité ───────────────────────── */
+function Fidelite() {
+  const { db, act, t, money, toast } = useApp();
+  const r = db.rules;
+  const [f, setF] = useState(() => ({ perDA: r.perDA, redeemValue: r.redeemValue, silver: r.tiers.Silver, gold: r.tiers.Gold, mS: r.mult.Silver, mG: r.mult.Gold, dS: r.disc.Silver, dG: r.disc.Gold }));
+  const saveRules = () => act(() => must(sb.from('loyalty_rules').update({ points_per_da: Math.max(1, Math.floor(+f.perDA) || 100), redeem_value: +f.redeemValue || 1, silver_threshold: Math.max(0, Math.floor(+f.silver) || 0), gold_threshold: Math.max(0, Math.floor(+f.gold) || 0), mult_silver: +f.mS || 1, mult_gold: +f.mG || 1, disc_silver: +f.dS || 0, disc_gold: +f.dG || 0 }).eq('id', 1)), t('Règles de fidélité enregistrées', 'تم حفظ قواعد الولاء'));
+  const tiers = { Bronze: 0, Silver: 0, Gold: 0 };
+  db.clients.forEach(c => { tiers[tierOf(c.earned, r)]++; });
+  const adjust = (id, n) => act(() => must(sb.rpc('adjust_points', { p_client_id: id, p_delta: n, p_note: 'Ajustement manuel' })), t('Points mis à jour', 'تم تحديث النقاط'));
+  const tierTone = { Bronze: 'amber', Silver: 'zinc', Gold: 'dark' };
+  const numF = (label, key, step = 1) => <Field label={label}><Input type="number" step={step} value={f[key]} onChange={e => setF({ ...f, [key]: e.target.value })} /></Field>;
+  return (
+    <div>
+      <PageTitle title={t('Système de fidélité', 'نظام الولاء')} sub={t(`${r.perDA} DA dépensés = 1 point · 1 point = ${r.redeemValue} DA`, `${r.perDA} د.ج = نقطة واحدة · النقطة = ${r.redeemValue} د.ج`)} />
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        {['Bronze', 'Silver', 'Gold'].map(k => (
+          <Card key={k} className="p-5">
+            <div className="flex items-center justify-between"><Badge tone={tierTone[k]}>{k}</Badge><span className="tabular text-2xl font-bold">{tiers[k]}</span></div>
+            <div className="mt-2 text-xs text-zinc-500">{k === 'Bronze' ? t('Points ≥ 0', 'نقاط ≥ 0') : k === 'Silver' ? `${t('Points ≥', 'نقاط ≥')} ${fmtNum(r.tiers.Silver)}` : `${t('Points ≥', 'نقاط ≥')} ${fmtNum(r.tiers.Gold)}`}</div>
+            <div className="mt-1 text-xs text-zinc-500">{t('Bonus', 'مكافأة')} ×{r.mult[k]} · −{r.disc[k]}%</div>
+          </Card>
+        ))}
+      </div>
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Card className="p-5">
+          <h2 className="mb-4 font-semibold">{t('Règles automatiques', 'القواعد التلقائية')}</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {numF(t('DA par point', 'د.ج لكل نقطة'), 'perDA')}
+            {numF(t('Valeur 1 pt (DA)', 'قيمة النقطة (د.ج)'), 'redeemValue')}
+            {numF(t('Seuil Silver (pts)', 'حد الفضي (نقاط)'), 'silver')}
+            {numF(t('Seuil Gold (pts)', 'حد الذهبي (نقاط)'), 'gold')}
+            {numF(t('×Points Silver', 'نقاط الفضي ×'), 'mS', 0.05)}
+            {numF(t('×Points Gold', 'نقاط الذهبي ×'), 'mG', 0.05)}
+            {numF(t('Remise Silver %', 'خصم الفضي %'), 'dS')}
+            {numF(t('Remise Gold %', 'خصم الذهبي %'), 'dG')}
+          </div>
+          <Btn className="mt-4 w-full" onClick={saveRules}><Icon n="check" s={14} />{t('Enregistrer les règles', 'حفظ القواعد')}</Btn>
+        </Card>
+        <Card className="overflow-hidden xl:col-span-2">
+          <div className="border-b border-zinc-100 px-5 py-4 font-semibold">{t('Comptes clients', 'حسابات الزبائن')}</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500"><tr>
+                {[t('Client', 'الزبون'), t('Palier', 'الفئة'), t('Solde', 'الرصيد'), t('Cumul gagné', 'المجموع المكتسب'), t('Dépenses', 'المشتريات'), t('Ajuster', 'تعديل')].map(h => <th key={h} className="px-4 py-3 text-start font-semibold">{h}</th>)}
+              </tr></thead>
+              <tbody className="divide-y divide-zinc-100">
+                {db.clients.map(c => { const tr = tierOf(c.earned, r); return (
+                  <tr key={c.id} className="hover:bg-zinc-50">
+                    <td className="px-4 py-3"><div className="font-medium">{c.name}</div><div className="text-xs text-zinc-500">{c.phone}</div></td>
+                    <td className="px-4 py-3"><Badge tone={tierTone[tr]}>{tr}</Badge></td>
+                    <td className="tabular px-4 py-3 font-semibold">{fmtNum(c.pts)} pts</td>
+                    <td className="tabular px-4 py-3 text-zinc-500">{fmtNum(c.earned)}</td>
+                    <td className="tabular px-4 py-3 text-zinc-500">{money(c.spend)}</td>
+                    <td className="px-4 py-3"><div className="flex gap-1">
+                      <button onClick={() => adjust(c.id, 100)} className="rounded-lg border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-50">+100</button>
+                      <button onClick={() => adjust(c.id, -100)} className="rounded-lg border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-50">−100</button>
+                    </div></td>
+                  </tr>); })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Bons d'achat ───────────────────────── */
+function Bons() {
+  const { db, act, t, money, toast } = useApp();
+  const newCode = () => 'BON-' + Math.random().toString(36).slice(2, 6).toUpperCase();
+  const [f, setF] = useState({ code: newCode(), kind: 'bon', type: 'fixed', value: 2000, minTotal: 0, expires: addDays(90), limit: 1 });
+  const [show, setShow] = useState(null);
+  const set = (k, v) => setF(x => ({ ...x, [k]: v }));
+  const create = async () => {
+    const code = f.code.trim().toUpperCase();
+    if (!code) { toast(t('Code requis', 'الرمز مطلوب'), 'err'); return; }
+    if (db.vouchers.some(v => v.code === code)) { toast(t('Ce code existe déjà', 'هذا الرمز موجود'), 'err'); return; }
+    if (+f.value <= 0) { toast(t('Valeur invalide', 'قيمة غير صالحة'), 'err'); return; }
+    if (f.type === 'percent' && +f.value > 100) { toast(t('Pourcentage max 100', 'النسبة القصوى 100'), 'err'); return; }
+    const done = await act(() => must(sb.from('vouchers').insert({ code, kind: f.kind, discount_type: f.type, value: +f.value, min_total: +f.minTotal || 0, expires_at: f.expires, usage_limit: Math.max(1, Math.floor(+f.limit) || 1), active: true })), t('Bon créé', 'تم إنشاء القسيمة'));
+    if (done) setF({ ...f, code: newCode() });
+  };
+  const toggle = id => { const v = db.vouchers.find(x => x.id === id); if (v) act(() => must(sb.from('vouchers').update({ active: !v.active }).eq('id', id))); };
+  return (
+    <div>
+      <PageTitle title={t("Bons d'achat & codes promo", 'قسائم الشراء والرموز الترويجية')} sub={t('Utilisables au site web et en caisse (POS)', 'قابلة للاستعمال في الموقع وفي الصندوق')} />
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Card className="h-fit p-5">
+          <h2 className="mb-4 font-semibold">{t('Créer un bon', 'إنشاء قسيمة')}</h2>
+          <div className="space-y-3">
+            <Field label={t('Code', 'الرمز')}><div className="flex gap-2"><Input value={f.code} onChange={e => set('code', e.target.value.toUpperCase())} className="font-mono" /><Btn v="soft" onClick={() => set('code', newCode())}><Icon n="refresh" s={14} /></Btn></div></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('Type de bon', 'نوع القسيمة')}><Select value={f.kind} onChange={e => set('kind', e.target.value)}><option value="bon">{t("Bon d'achat", 'قسيمة شراء')}</option><option value="promo">{t('Code promo', 'رمز ترويجي')}</option></Select></Field>
+              <Field label={t('Remise', 'الخصم')}><Select value={f.type} onChange={e => set('type', e.target.value)}><option value="fixed">{t('Montant fixe', 'مبلغ ثابت')}</option><option value="percent">{t('Pourcentage', 'نسبة')}</option></Select></Field>
+              <Field label={f.type === 'percent' ? '%' : t('Montant (DA)', 'المبلغ (د.ج)')}><Input type="number" value={f.value} onChange={e => set('value', e.target.value)} /></Field>
+              <Field label={t('Minimum panier (DA)', 'الحد الأدنى للسلة')}><Input type="number" value={f.minTotal} onChange={e => set('minTotal', e.target.value)} /></Field>
+              <Field label={t("Date d'expiration", 'تاريخ الانتهاء')}><Input type="date" value={f.expires} onChange={e => set('expires', e.target.value)} /></Field>
+              <Field label={t("Utilisations max", 'الحد الأقصى للاستعمال')}><Input type="number" min="1" value={f.limit} onChange={e => set('limit', e.target.value)} /></Field>
+            </div>
+            <Btn className="w-full" onClick={create}><Icon n="gift" s={14} />{t('Générer le bon', 'إنشاء القسيمة')}</Btn>
+          </div>
+        </Card>
+        <div className="grid gap-4 sm:grid-cols-2 xl:col-span-2">
+          {db.vouchers.map(v => {
+            const expired = v.expires < today(); const full = v.used >= v.limit;
+            const pct = Math.min(100, (v.used / v.limit) * 100);
+            return (
+              <Card key={v.id} className="p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <div><div className="font-mono text-sm font-bold tracking-wide">{v.code}</div><div className="mt-1 flex flex-wrap gap-1.5"><Badge tone={v.kind === 'bon' ? 'violet' : 'blue'}>{v.kind === 'bon' ? t("Bon d'achat", "قسيمة") : t('Promo', 'ترويجي')}</Badge>{expired && <Badge tone="red">{t('Expiré', 'منتهٍ')}</Badge>}{full && !expired && <Badge tone="amber">{t('Épuisé', 'مستنفد')}</Badge>}{!v.active && <Badge>{t('Désactivé', 'معطل')}</Badge>}</div></div>
+                  <div className="tabular text-lg font-bold">{v.type === 'percent' ? `${v.value}%` : money(v.value)}</div>
+                </div>
+                <div className="mt-4"><div className="mb-1 flex justify-between text-xs text-zinc-500"><span>{t('Utilisations', 'الاستعمالات')}</span><span className="tabular">{v.used} / {v.limit}</span></div><div className="h-1.5 rounded-full bg-zinc-100"><div className="h-1.5 rounded-full bg-emerald-600 transition-all" style={{ width: `${pct}%` }} /></div></div>
+                <div className="mt-3 flex items-center justify-between text-xs text-zinc-500"><span>{t('Min.', 'الحد الأدنى')} {money(v.minTotal)}</span><span className="tabular">{t('Exp.', 'ينتهي')} {v.expires}</span></div>
+                <div className="mt-4 flex gap-2">
+                  <Btn v="ghost" className="flex-1" onClick={() => setShow(v)}><Icon n="eye" s={14} />{t('Voir / imprimer', 'عرض / طباعة')}</Btn>
+                  <Btn v="soft" onClick={() => toggle(v.id)}>{v.active ? t('Désactiver', 'تعطيل') : t('Activer', 'تفعيل')}</Btn>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+      {show && <Modal title={t('Aperçu du bon', 'معاينة القسيمة')} onClose={() => setShow(null)}><VoucherCard v={show} /><p className="mt-4 text-center text-xs text-zinc-500">{t('Pour impression : copiez le code et collez-le dans un document.', 'للطباعة: انسخ الرمز والصقه في مستند.')}</p></Modal>}
+    </div>
+  );
+}
+
+/* ───────────────────────── Caisse (Vendeur) ───────────────────────── */
+function POS() {
+  const { db, t, pn, money, lang, quote, checkout } = useApp();
+  const [q, setQ] = useState('');
+  const [cat, setCat] = useState('Toutes');
+  const [cart, setCart] = useState([]);
+  const [clientId, setClientId] = useState('');
+  const [code, setCode] = useState('');
+  const [usePts, setUsePts] = useState(0);
+  const products = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar + p.sku).toLowerCase().includes(q.toLowerCase())));
+  const add = p => {
+    if (p.stock <= 0) return;
+    const e = cart.find(x => x.pid === p.id);
+    setCart(e ? cart.map(x => x.pid === p.id ? { ...x, qty: Math.min(p.stock, x.qty + 1) } : x) : [...cart, { pid: p.id, qty: 1 }]);
+  };
+  const setQty = (pid, n) => setCart(cart.map(x => x.pid === pid ? { ...x, qty: n } : x).filter(x => x.qty > 0));
+  const qt = quote({ cart, clientId: clientId || null, code, usePts: Number(usePts) || 0 });
+  const client = qt.client;
+  const finish = async () => {
+    const sale = await checkout({ channel: 'POS', cart, clientId: clientId || null, code, usePts: Number(usePts) || 0 });
+    if (sale) { setCart([]); setCode(''); setUsePts(0); }
+  };
+  return (
+    <div className="grid gap-4 xl:grid-cols-5">
+      <div className="xl:col-span-3">
+        <PageTitle title={t('Vente · Caisse', 'البيع · الصندوق')} sub={t('Encaissement rapide, stock déduit automatiquement', 'تسجيل سريع، والمخزون يُخصم تلقائياً')} />
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="relative min-w-48 flex-1"><Icon n="search" s={15} className="absolute start-3 top-2.5 text-zinc-400" /><Input value={q} onChange={e => setQ(e.target.value)} placeholder={t('Nom ou SKU…', 'الاسم أو الرمز…')} className="ps-9" /></div>
+          <div className="flex flex-wrap gap-1.5">{['Toutes', ...CATS].map(c => <button key={c} onClick={() => setCat(c)} className={`rounded-full px-3 py-1.5 text-xs font-medium ${cat === c ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{lang === 'ar' ? CAT_AR[c] : c}</button>)}</div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          {products.map(p => (
+            <button key={p.id} onClick={() => add(p)} disabled={p.stock <= 0} className="group rounded-2xl border border-zinc-200 bg-white p-3 text-start transition hover:-translate-y-0.5 hover:shadow-md active:scale-[.98] disabled:opacity-50">
+              <div className={`mb-2 grid h-20 place-items-center rounded-xl text-4xl ${p.bg}`}>{p.emoji}</div>
+              <div className="truncate text-sm font-medium">{pn(p)}</div>
+              <div className="mt-1 flex items-center justify-between"><span className="tabular text-sm font-semibold">{money(p.price)}</span><span className={`tabular text-xs ${stockState(p) === 'ok' ? 'text-zinc-400' : 'text-amber-700'}`}>{p.stock} {t('en stock', 'متوفر')}</span></div>
+            </button>
+          ))}
+        </div>
+      </div>
+      <Card className="h-fit p-5 xl:sticky xl:top-20 xl:col-span-2">
+        <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">{t('Panier', 'السلة')}</h2><span className="text-xs text-zinc-500">{cart.length} {t('article(s)', 'قطعة')}</span></div>
+        <div className="max-h-64 space-y-2 overflow-auto pe-1">
+          {cart.length === 0 && <div className="py-8 text-center text-sm text-zinc-400">{t('Touchez un produit pour l’ajouter', 'انقر على منتج لإضافته')}</div>}
+          {cart.map(l => { const p = db.products.find(x => x.id === l.pid); return (
+            <div key={l.pid} className="fade-up flex items-center gap-2 rounded-xl bg-zinc-50 p-2">
+              <span className="text-lg">{p.emoji}</span>
+              <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{pn(p)}</div><div className="tabular text-xs text-zinc-500">{money(p.price)}</div></div>
+              <button onClick={() => setQty(l.pid, l.qty - 1)} className="grid h-7 w-7 place-items-center rounded-lg bg-white border border-zinc-200"><Icon n="minus" s={12} /></button>
+              <span className="tabular w-6 text-center text-sm font-semibold">{l.qty}</span>
+              <button onClick={() => setQty(l.pid, Math.min(p.stock, l.qty + 1))} className="grid h-7 w-7 place-items-center rounded-lg bg-white border border-zinc-200"><Icon n="plus" s={12} /></button>
+            </div>); })}
+        </div>
+        <div className="mt-4 space-y-3">
+          <Field label={t('Client (fidélité)', 'الزبون (الولاء)')}><Select value={clientId} onChange={e => { setClientId(e.target.value); setUsePts(0); }}><option value="">{t('Client de passage', 'زبون عابر')}</option>{db.clients.map(c => <option key={c.id} value={c.id}>{c.name} · {fmtNum(c.pts)} pts</option>)}</Select></Field>
+          <div className="flex gap-2"><Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder={t('Bon / code promo', 'قسيمة / رمز')} className="font-mono" /></div>
+          {code && qt.vr && qt.vr.error && <div className="text-xs text-rose-600">{qt.vr.error}</div>}
+          {code && qt.vr && qt.vr.v && <div className="text-xs text-emerald-700">✓ {qt.vr.v.code} · −{money(qt.vr.disc)}</div>}
+          {client && client.pts > 0 && (
+            <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-3">
+              <div className="mb-2 flex justify-between text-xs"><span className="text-violet-800">{t('Utiliser des points', 'استعمال النقاط')}</span><span className="tabular text-violet-700">{t('Solde', 'الرصيد')} {fmtNum(client.pts)} pts</span></div>
+              <div className="flex gap-2"><Input type="number" min="0" max={client.pts} value={usePts} onChange={e => setUsePts(e.target.value)} className="bg-white" /><Btn v="soft" onClick={() => setUsePts(client.pts)}>{t('Max', 'الأقصى')}</Btn></div>
+            </div>
+          )}
+        </div>
+        <div className="mt-4 space-y-1.5 border-t border-zinc-100 pt-4 text-sm">
+          <div className="flex justify-between text-zinc-500"><span>{t('Sous-total', 'المجموع الفرعي')}</span><span className="tabular">{money(qt.subtotal)}</span></div>
+          {qt.tierDisc > 0 && <div className="flex justify-between text-emerald-700"><span>{t('Remise', 'خصم')} {qt.tier}</span><span className="tabular">-{money(qt.tierDisc)}</span></div>}
+          {qt.voucherDisc > 0 && <div className="flex justify-between text-emerald-700"><span>{t('Bon', 'قسيمة')}</span><span className="tabular">-{money(qt.voucherDisc)}</span></div>}
+          {qt.pointsDisc > 0 && <div className="flex justify-between text-emerald-700"><span>{t('Points', 'نقاط')}</span><span className="tabular">-{money(qt.pointsDisc)}</span></div>}
+          <div className="flex justify-between pt-1 text-lg font-bold"><span>Total</span><span className="tabular">{money(qt.total)}</span></div>
+          {qt.pointsEarned > 0 && <div className="text-end text-xs text-violet-700">+{qt.pointsEarned} {t('points à créditer', 'نقاط للإضافة')}</div>}
+        </div>
+        {qt.stockErr && <div className="mt-2 text-xs text-rose-600">{t('Stock insuffisant', 'مخزون غير كافٍ')} : {lang === 'ar' ? qt.stockErr.ar : qt.stockErr.name}</div>}
+        <Btn v="accent" className="mt-4 w-full py-3" disabled={!cart.length} onClick={finish}><Icon n="check" s={16} />{t('Encaisser', 'تسجيل الدفع')} · {money(qt.total)}</Btn>
+      </Card>
+    </div>
+  );
+}
+function VentesJour() {
+  const { db, t, money, setReceipt } = useApp();
+  const rows = db.sales.filter(s => s.date === today());
+  const total = rows.reduce((s, x) => s + x.total, 0);
+  return (
+    <div>
+      <PageTitle title={t('Ventes du jour', 'مبيعات اليوم')} sub={today()} />
+      <div className="mb-4 grid gap-3 sm:grid-cols-2">
+        <Kpi label={t('Encaissé aujourd’hui', 'المحصل اليوم')} value={money(total)} icon="chart" tone="green" />
+        <Kpi label={t('Tickets', 'الإيصالات')} value={rows.length} icon="receipt" tone="blue" />
+      </div>
+      <Card className="overflow-hidden"><SalesTable rows={rows} onOpen={setReceipt} /></Card>
+    </div>
+  );
+}
+
+/* ───────────────────────── Boutique web (Client) & aperçu admin ───────────────────────── */
+function Storefront() {
+  const { db, t, pn, money, lang, clientId, setClientId, quote, checkout, toast, rules, role } = useApp();
+  const [cat, setCat] = useState('Toutes');
+  const [q, setQ] = useState('');
+  const [sort, setSort] = useState('pop');
+  const [cart, setCart] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState('');
+  const [usePts, setUsePts] = useState(0);
+  let list = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar).toLowerCase().includes(q.toLowerCase())));
+  if (sort === 'asc') list = [...list].sort((a, b) => a.price - b.price);
+  if (sort === 'desc') list = [...list].sort((a, b) => b.price - a.price);
+  const add = p => {
+    if (p.stock <= 0) return;
+    const e = cart.find(x => x.pid === p.id);
+    if (e && e.qty >= p.stock) { toast(t('Stock maximum atteint', 'تم بلوغ الحد الأقصى'), 'err'); return; }
+    setCart(e ? cart.map(x => x.pid === p.id ? { ...x, qty: x.qty + 1 } : x) : [...cart, { pid: p.id, qty: 1 }]);
+    toast(t(`${pn(p)} ajouté au panier`, `تمت إضافة ${pn(p)} إلى السلة`));
+  };
+  const setQty = (pid, n) => setCart(cart.filter(x => x.pid !== pid || n > 0).map(x => x.pid === pid ? { ...x, qty: n } : x));
+  const qt = quote({ cart, clientId: clientId || null, code, usePts: Number(usePts) || 0 });
+  const client = qt.client;
+  const count = cart.reduce((s, x) => s + x.qty, 0);
+  const tierNow = client ? tierOf(client.earned, rules) : null;
+  const order = async () => {
+    const sale = await checkout({ channel: 'Web', cart, clientId: clientId || null, code, usePts: Number(usePts) || 0 });
+    if (sale) { setCart([]); setCode(''); setUsePts(0); setOpen(false); }
+  };
+  return (
+    <div>
+      <div className="mb-5 overflow-hidden rounded-3xl bg-zinc-900 p-6 text-white md:p-8">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-white/50">{t('Site web officiel', 'الموقع الرسمي')}</div>
+            <h1 className="mt-2 text-3xl font-extrabold tracking-tight md:text-4xl">{t('Nouvelle collection', 'المجموعة الجديدة')}</h1>
+            <p className="mt-2 max-w-md text-sm text-white/70">{t('Prêt-à-porter fabriqué localement. Cumulez des points à chaque achat et profitez de vos bons.', 'ملابس جاهزة مصنوعة محلياً. اجمع النقاط مع كل عملية شراء واستفد من قسائمك.')}</p>
+          </div>
+          <div className="rounded-2xl bg-white/10 p-4 text-sm backdrop-blur">
+            {role === 'client'
+              ? <div className="text-sm font-semibold text-white">{client ? client.name : '—'}</div>
+              : <div>
+                <label className="block text-[11px] uppercase tracking-wider text-white/60">{t('Vente au nom de', 'البيع باسم')}</label>
+                <select value={clientId} onChange={e => { setClientId(e.target.value); setUsePts(0); }} className="mt-1 w-56 rounded-lg bg-white px-2 py-1.5 text-zinc-900 outline-none">
+                  <option value="">{t('Invité (sans points)', 'ضيف (بدون نقاط)')}</option>
+                  {db.clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select></div>}
+            {client && <div className="mt-2 flex items-center gap-2 text-xs text-white/80"><Badge tone="dark">{tierNow}</Badge><span className="tabular">{fmtNum(client.pts)} pts · {money(client.pts * rules.redeemValue)}</span></div>}
+          </div>
+        </div>
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-52 flex-1"><Icon n="search" s={15} className="absolute start-3 top-2.5 text-zinc-400" /><Input value={q} onChange={e => setQ(e.target.value)} placeholder={t('Rechercher un article…', 'ابحث عن قطعة…')} className="ps-9" /></div>
+        <Select value={sort} onChange={e => setSort(e.target.value)} className="w-auto"><option value="pop">{t('Pertinence', 'الأنسب')}</option><option value="asc">{t('Prix croissant', 'السعر تصاعدي')}</option><option value="desc">{t('Prix décroissant', 'السعر تنازلي')}</option></Select>
+        <div className="flex gap-1.5">{['Toutes', ...CATS].map(c => <button key={c} onClick={() => setCat(c)} className={`rounded-full px-3 py-2 text-xs font-medium transition ${cat === c ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 ring-1 ring-zinc-200 hover:ring-zinc-400'}`}>{lang === 'ar' ? CAT_AR[c] : c}</button>)}</div>
+      </div>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+        {list.map(p => (
+          <Card key={p.id} className="group overflow-hidden transition hover:-translate-y-1 hover:shadow-lg">
+            <div className={`grid h-44 place-items-center text-7xl transition group-hover:scale-105 ${p.bg}`}>{p.emoji}</div>
+            <div className="p-4">
+              <div className="text-[11px] uppercase tracking-wider text-zinc-400">{lang === 'ar' ? CAT_AR[p.cat] : p.cat} · {p.color}</div>
+              <div className="mt-0.5 truncate font-semibold">{pn(p)}</div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="tabular font-bold">{money(p.price)}</span>
+                {p.stock <= 0 ? <Badge tone="red">{t('Épuisé', 'نفد')}</Badge> : p.stock <= p.reorder ? <Badge tone="amber">{t('Dernières pièces', 'آخر القطع')}</Badge> : null}
+              </div>
+              <Btn className="mt-3 w-full" disabled={p.stock <= 0} onClick={() => add(p)}><Icon n="bag" s={14} />{t('Ajouter', 'أضف')}</Btn>
+            </div>
+          </Card>
+        ))}
+      </div>
+      {list.length === 0 && <div className="py-16 text-center text-sm text-zinc-500">{t('Aucun article trouvé', 'لم نجد أي قطعة')}</div>}
+
+      <button onClick={() => setOpen(true)} className="fixed bottom-5 end-5 z-30 flex items-center gap-2 rounded-full bg-zinc-900 px-5 py-3 text-sm font-semibold text-white shadow-xl transition hover:scale-105">
+        <Icon n="bag" s={18} />{t('Panier', 'السلة')} {count > 0 && <span className="rounded-full bg-white px-2 text-xs text-zinc-900">{count}</span>}
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 bg-zinc-900/40 backdrop-blur-sm" onClick={() => setOpen(false)}>
+          <aside onClick={e => e.stopPropagation()} className="fade-up absolute inset-y-0 end-0 flex w-full max-w-md flex-col bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4"><h2 className="font-semibold">{t('Votre panier', 'سلتك')}</h2><button onClick={() => setOpen(false)} className="rounded-lg p-1 hover:bg-zinc-100"><Icon n="x" /></button></div>
+            <div className="flex-1 space-y-3 overflow-auto p-5">
+              {cart.length === 0 && <div className="py-12 text-center text-sm text-zinc-400">{t('Votre panier est vide', 'السلة فارغة')}</div>}
+              {cart.map(l => { const p = db.products.find(x => x.id === l.pid); return (
+                <div key={l.pid} className="flex items-center gap-3 rounded-xl border border-zinc-100 p-3">
+                  <span className={`grid h-12 w-12 place-items-center rounded-lg text-2xl ${p.bg}`}>{p.emoji}</span>
+                  <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{pn(p)}</div><div className="tabular text-xs text-zinc-500">{money(p.price * l.qty)}</div></div>
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => setQty(l.pid, l.qty - 1)} className="grid h-7 w-7 place-items-center rounded-lg border border-zinc-200"><Icon n="minus" s={12} /></button>
+                    <span className="tabular w-6 text-center text-sm">{l.qty}</span>
+                    <button onClick={() => l.qty < p.stock && setQty(l.pid, l.qty + 1)} className="grid h-7 w-7 place-items-center rounded-lg border border-zinc-200"><Icon n="plus" s={12} /></button>
+                  </div>
+                </div>); })}
+              {cart.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  <div className="flex gap-2"><Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder={t('Code bon / promo', 'رمز القسيمة / الترويج')} className="font-mono" /></div>
+                  {code && qt.vr && qt.vr.error && <div className="text-xs text-rose-600">{qt.vr.error}</div>}
+                  {code && qt.vr && qt.vr.v && <div className="text-xs text-emerald-700">✓ {qt.vr.v.code} appliqué</div>}
+                  {client && client.pts > 0 && (
+                    <div className="rounded-xl bg-violet-50 p-3">
+                      <div className="mb-2 text-xs text-violet-800">{t('Utiliser mes points', 'استعمال نقاطي')} · {fmtNum(client.pts)} pts</div>
+                      <div className="flex gap-2"><Input type="number" min="0" max={client.pts} value={usePts} onChange={e => setUsePts(e.target.value)} className="bg-white" /><Btn v="soft" onClick={() => setUsePts(client.pts)}>{t('Max', 'الأقصى')}</Btn></div>
+                    </div>
+                  )}
+                  <div className="space-y-1.5 border-t border-zinc-100 pt-3 text-sm">
+                    <div className="flex justify-between text-zinc-500"><span>{t('Sous-total', 'المجموع الفرعي')}</span><span className="tabular">{money(qt.subtotal)}</span></div>
+                    {qt.tierDisc > 0 && <div className="flex justify-between text-emerald-700"><span>{t('Avantage', 'ميزة')} {qt.tier}</span><span className="tabular">-{money(qt.tierDisc)}</span></div>}
+                    {qt.voucherDisc > 0 && <div className="flex justify-between text-emerald-700"><span>{t('Bon', 'قسيمة')}</span><span className="tabular">-{money(qt.voucherDisc)}</span></div>}
+                    {qt.pointsDisc > 0 && <div className="flex justify-between text-emerald-700"><span>{t('Points', 'نقاط')}</span><span className="tabular">-{money(qt.pointsDisc)}</span></div>}
+                    <div className="flex justify-between pt-1 text-lg font-bold"><span>Total</span><span className="tabular">{money(qt.total)}</span></div>
+                    {qt.pointsEarned > 0 && <div className="text-end text-xs text-violet-700">+{qt.pointsEarned} {t('points gagnés', 'نقاط مكتسبة')}</div>}
+                  </div>
+                </div>
+              )}
+            </div>
+            {cart.length > 0 && <div className="border-t border-zinc-100 p-5"><Btn className="w-full py-3" onClick={order} disabled={!!qt.stockErr}><Icon n="check" s={15} />{t('Commander', 'اطلب الآن')} · {money(qt.total)}</Btn></div>}
+          </aside>
+        </div>
+      )}
+    </div>
+  );
+}
+function MesPoints() {
+  const { db, t, money, clientId, setClientId, rules, pn } = useApp();
+  const c = db.clients.find(x => x.id === clientId) || db.clients[0];
+  if (!c) return <Card className="p-8 text-center text-sm text-zinc-500">{t('Aucun compte fidélité trouvé', 'لم يتم العثور على حساب ولاء')}</Card>;
+  const tier = tierOf(c.earned, rules);
+  const next = tier === 'Bronze' ? { k: 'Silver', at: rules.tiers.Silver, from: 0 } : tier === 'Silver' ? { k: 'Gold', at: rules.tiers.Gold, from: rules.tiers.Silver } : null;
+  const pct = next ? Math.min(100, ((c.earned - next.from) / (next.at - next.from)) * 100) : 100;
+  const perks = { Bronze: [t(`1 point par ${rules.perDA} DA`, `نقطة واحدة لكل ${rules.perDA} د.ج`)], Silver: [t('+25 % de points', '+25٪ نقاط'), t('−3 % sur vos achats', '−3٪ على مشترياتك')], Gold: [t('+50 % de points', '+50٪ نقاط'), t('−5 % sur vos achats', '−5٪ على مشترياتك'), t('Accès prioritaire aux nouveautés', 'أولوية الوصول إلى الجديد')] };
+  const available = db.vouchers.filter(v => v.active && v.expires >= today() && v.used < v.limit);
+  const hist = db.sales.filter(s => s.clientId === c.id);
+  return (
+    <div>
+      <PageTitle title={t('Mes points & bons', 'نقاطي وقسائمي')} sub={t('Votre fidélité, vos avantages et vos bons', 'ولاؤك ومزاياك وقسائمك')} right={
+        <select value={clientId} onChange={e => setClientId(e.target.value)} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm">{db.clients.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>} />
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          <Card className="overflow-hidden p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div><div className="text-sm text-zinc-500">{t('Solde de points', 'رصيد النقاط')}</div><div className="tabular mt-1 text-4xl font-extrabold tracking-tight">{fmtNum(c.pts)} <span className="text-lg font-medium text-zinc-400">pts</span></div><div className="tabular text-sm text-zinc-500">≈ {money(c.pts * rules.redeemValue)} {t('de réduction', 'من التخفيض')}</div></div>
+              <Badge tone={tier === 'Gold' ? 'dark' : tier === 'Silver' ? 'zinc' : 'amber'}>{tier}</Badge>
+            </div>
+            <div className="mt-6">
+              <div className="mb-2 flex justify-between text-xs text-zinc-500"><span>{t('Progression', 'التقدم')}</span><span className="tabular">{next ? `${fmtNum(c.earned)} / ${fmtNum(next.at)} pts → ${next.k}` : t('Niveau maximum atteint', 'أعلى مستوى')}</span></div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-zinc-100"><div className="h-2.5 rounded-full bg-gradient-to-r from-zinc-700 to-zinc-900 transition-all duration-700" style={{ width: `${pct}%` }} /></div>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">{perks[tier].map(p => <span key={p} className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700">✓ {p}</span>)}</div>
+          </Card>
+          <Card className="p-5">
+            <h2 className="mb-3 font-semibold">{t('Historique d’achats', 'سجل المشتريات')}</h2>
+            <div className="divide-y divide-zinc-100">
+              {hist.slice(0, 8).map(s => <div key={s.id} className="flex items-center gap-3 py-3 text-sm"><Icon n="receipt" s={16} className="text-zinc-400" /><div className="flex-1"><div className="font-medium">{s.ref} · {s.channel === 'Web' ? t('Site web', 'الموقع') : t('Magasin', 'المتجر')}</div><div className="text-xs text-zinc-500">{s.date}</div></div><div className="text-end"><div className="tabular font-semibold">{money(s.total)}</div>{s.pointsEarned > 0 && <div className="tabular text-xs text-violet-700">+{s.pointsEarned} pts</div>}</div></div>)}
+              {hist.length === 0 && <div className="py-6 text-center text-sm text-zinc-400">{t('Aucun achat pour le moment', 'لا توجد مشتريات بعد')}</div>}
+            </div>
+          </Card>
+        </div>
+        <div className="space-y-3">
+          <h2 className="font-semibold">{t('Bons disponibles', 'القسائم المتاحة')}</h2>
+          {available.map(v => <VoucherCard key={v.id} v={v} />)}
+          {available.length === 0 && <Card className="p-5 text-sm text-zinc-500">{t('Aucun bon actif', 'لا توجد قسائم نشطة')}</Card>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Portail fournisseur ───────────────────────── */
+function Fournisseur({ mode }) {
+  const { db, act, t, pn, money, toast, supplierId } = useApp();
+  const sup = db.suppliers.find(s => s.id === supplierId) || db.suppliers[0];
+  if (!sup) return <Card className="p-8 text-center text-sm text-zinc-500">{t('Ce compte n’est lié à aucun fournisseur. Demandez à l’administrateur de le rattacher.', 'هذا الحساب غير مرتبط بأي مورد. اطلب من المدير ربطه.')}</Card>;
+  const pos = db.purchases.filter(p => p.supplierId === sup.id && p.status !== 'Brouillon');
+  const advance = (id, from, to) => act(() => must(sb.rpc('set_po_status', { p_po_id: id, p_status: PO_TO[to] })), t('Statut mis à jour', 'تم تحديث الحالة'));
+  const restock = db.products.filter(p => p.sup === sup.id && p.stock <= p.reorder);
+  const accept = () => act(() => must(sb.rpc('supplier_accept_restock')), t('Réassort accepté · bon confirmé', 'تم قبول إعادة التخزين · الطلب مؤكد'));
+  return (
+    <div>
+      <PageTitle title={mode === 'reassort' ? t('Demandes de réassort', 'طلبات إعادة التخزين') : t('Mes commandes', 'طلباتي')} sub={`${sup.name} · ${t('délai', 'المهلة')} ${sup.leadDays} j`} right={<div className="w-full sm:w-auto"><SupplierSelect /></div>} />
+      {mode === 'portail' && (
+        <div className="space-y-4">
+          {pos.length === 0 && <Card className="p-8 text-center text-sm text-zinc-500">{t('Aucune commande en cours', 'لا توجد طلبات حالياً')}</Card>}
+          {pos.map(po => (
+            <Card key={po.id} className="p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div><div className="font-mono text-sm font-bold">{po.ref}</div><div className="text-xs text-zinc-500">{t('Émise le', 'صدر في')} {po.date} · {t('Livraison prévue', 'التسليم المتوقع')} <span className="tabular">{po.expected}</span></div></div>
+                <StatusBadge status={po.status} />
+              </div>
+              <div className="my-5"><Timeline status={po.status} /></div>
+              <div className="divide-y divide-zinc-100 rounded-xl border border-zinc-100 text-sm">
+                {po.lines.map((l, i) => { const p = db.products.find(x => x.id === l.pid); return (
+                  <div key={i} className="flex items-center gap-3 px-3 py-2"><span>{p && p.emoji}</span><span className="flex-1 truncate">{p && pn(p)}</span><span className="tabular text-zinc-500">{l.received}/{l.qty}</span><span className="tabular w-24 text-end">{money(l.qty * l.cost)}</span></div>); })}
+              </div>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                {po.status === 'Envoyée' && <Btn onClick={() => advance(po.id, 'Envoyée', 'Confirmée')}><Icon n="check" s={14} />{t('Confirmer la commande', 'تأكيد الطلب')}</Btn>}
+                {po.status === 'Confirmée' && <Btn v="soft" onClick={() => advance(po.id, 'Confirmée', 'Expédiée')}><Icon n="truck" s={14} />{t('Marquer expédiée', 'تحديد كمشحون')}</Btn>}
+                {po.status === 'Expédiée' && <span className="self-center text-xs text-zinc-500">{t('En attente de réception au magasin', 'في انتظار الاستلام في المتجر')}</span>}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+      {mode === 'reassort' && (
+        <Card className="p-5">
+          {restock.length === 0 ? <div className="py-8 text-center text-sm text-zinc-500">{t('Aucun réassort demandé pour ce fournisseur ✓', 'لا توجد طلبات إعادة تخزين لهذا المورد ✓')}</div> : <>
+            <div className="mb-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{t('Ces articles sont sous leur seuil de réassort.', 'هذه القطع أقل من حد إعادة التخزين.')}</div>
+            <div className="divide-y divide-zinc-100">
+              {restock.map(p => <div key={p.id} className="flex items-center gap-3 py-3"><span className={`grid h-10 w-10 place-items-center rounded-lg text-xl ${p.bg}`}>{p.emoji}</span><div className="flex-1"><div className="font-medium">{pn(p)}</div><div className="text-xs text-zinc-500">{t('Stock', 'المخزون')} {p.stock} · {t('seuil', 'الحد')} {p.reorder}</div></div><div className="tabular text-sm">→ {Math.max(p.reorder * 2 - p.stock, p.reorder)} {t('pcs', 'قطع')}</div></div>)}
+            </div>
+            <Btn className="mt-4 w-full" onClick={accept}><Icon n="check" s={14} />{t('Accepter le réassort', 'قبول إعادة التخزين')}</Btn>
+          </>}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ───────────────────────── Application ───────────────────────── */
+const NAV = {
+  admin: [
+    { k: 'dash', fr: 'Tableau de bord', ar: 'لوحة القيادة', ic: 'dash' },
+    { k: 'stock', fr: 'Gestion de stock', ar: 'إدارة المخزون', ic: 'box' },
+    { k: 'achat', fr: 'Achat', ar: 'المشتريات', ic: 'truck' },
+    { k: 'fourn', fr: 'Fournisseurs', ar: 'الموردون', ic: 'users' },
+    { k: 'ventes', fr: 'Ventes', ar: 'المبيعات', ic: 'receipt' },
+    { k: 'fid', fr: 'Système de fidélité', ar: 'نظام الولاء', ic: 'star' },
+    { k: 'bons', fr: "Bons d'achat", ar: 'قسائم الشراء', ic: 'gift' },
+    { k: 'site', fr: 'Site web officiel', ar: 'الموقع الرسمي', ic: 'globe' },
+  ],
+  vendeur: [
+    { k: 'pos', fr: 'Vente (caisse)', ar: 'البيع (الصندوق)', ic: 'cart' },
+    { k: 'vjour', fr: 'Ventes du jour', ar: 'مبيعات اليوم', ic: 'receipt' },
+    { k: 'stockv', fr: 'Consulter le stock', ar: 'عرض المخزون', ic: 'box' },
+  ],
+  fournisseur: [
+    { k: 'portail', fr: 'Mes commandes', ar: 'طلباتي', ic: 'truck' },
+    { k: 'reassort', fr: 'Demandes de réassort', ar: 'طلبات إعادة التخزين', ic: 'alert' },
+  ],
+  client: [
+    { k: 'boutique', fr: 'Boutique', ar: 'المتجر', ic: 'store' },
+    { k: 'mesp', fr: 'Mes points & bons', ar: 'نقاطي وقسائمي', ic: 'gift' },
+  ],
+};
+const ROLES = [
+  { k: 'admin', fr: 'Admin', ar: 'المدير', ic: 'crown' },
+  { k: 'vendeur', fr: 'Vendeur', ar: 'البائع', ic: 'cart' },
+  { k: 'fournisseur', fr: 'Fournisseur', ar: 'المورد', ic: 'truck' },
+  { k: 'client', fr: 'Client', ar: 'الزبون', ic: 'user' },
+];
+const VIEWS = {
+  dash: Dashboard, stock: () => <StockView />, achat: Achats, fourn: Fournisseurs, ventes: Ventes, fid: Fidelite, bons: Bons, site: Storefront,
+  pos: POS, vjour: VentesJour, stockv: () => <StockView readonly />,
+  portail: () => <Fournisseur mode="portail" />, reassort: () => <Fournisseur mode="reassort" />,
+  boutique: Storefront, mesp: MesPoints,
+};
+
+function Shell({ session, lang, setLang }) {
+  const [db, setDb] = useState(EMPTY_DB);
+  const [profile, setProfile] = useState(null);
+  const [boot, setBoot] = useState({ loading: true, error: null });
+  const [view, setView] = useState('');
+  const [toasts, setToasts] = useState([]);
+  const [supplierSel, setSupplierId] = useState('');
+  const [clientSel, setClientId] = useState('');
+  const [receipt, setReceipt] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const t = (fr, ar) => lang === 'ar' ? ar : fr;
+  const pn = p => lang === 'ar' ? p.ar : p.name;
+  const money = n => fmtNum(n) + (lang === 'ar' ? ' د.ج' : ' DA');
+  const toast = (msg, tone = 'ok') => {
+    const id = uid('t');
+    setToasts(x => [...x, { id, msg, tone }]);
+    setTimeout(() => setToasts(x => x.filter(y => y.id !== id)), 3200);
+  };
+  const role = profile ? profile.role : null;
+  const clientId = role === 'client' ? (profile.client_id || '') : clientSel;
+  const supplierId = role === 'fournisseur' ? (profile.supplier_id || '') : supplierSel;
+
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      try {
+        const p = await must(sb.from('profiles').select('role, full_name, supplier_id, client_id').eq('id', session.user.id).maybeSingle());
+        if (!p) throw new Error('PROFILE_MISSING');
+        const d = await loadAll(p.role);
+        if (off) return;
+        setProfile(p); setDb(d); setView(NAV[p.role][0].k); setBoot({ loading: false, error: null });
+      } catch (e) { if (!off) setBoot({ loading: false, error: e.message === 'PROFILE_MISSING' ? 'PROFILE_MISSING' : errText(e, (a) => a) }); }
+    })();
+    return () => { off = true; };
+  }, [session.user.id]);
+
+  const reload = async () => { const d = await loadAll(role); setDb(d); return d; };
+  const act = async (fn, okMsg) => {
+    setBusy(true);
+    try { await fn(); await reload(); if (okMsg) toast(okMsg); return true; }
+    catch (e) { toast(errText(e, t), 'err'); return false; }
+    finally { setBusy(false); }
+  };
+  const quote = args => quoteSale(db, args, t);
+  const checkout = async args => {
+    const q = quoteSale(db, args, t);
+    if (!q.lines.length) { toast(t('Panier vide', 'السلة فارغة'), 'err'); return null; }
+    if (q.stockErr) { toast(t(`Stock insuffisant : ${q.stockErr.name}`, `مخزون غير كافٍ: ${q.stockErr.ar}`), 'err'); return null; }
+    if (q.error) { toast(q.error, 'err'); return null; }
+    setBusy(true);
+    try {
+      const row = await must(sb.rpc('create_sale', { p_channel: args.channel === 'Web' ? 'web' : 'pos', p_client_id: args.clientId || null, p_items: q.lines.map(l => ({ product_id: l.pid, qty: l.qty })), p_voucher_code: args.code ? args.code.trim() : null, p_points_used: q.pointsUsed }));
+      const d = await reload();
+      const sale = d.sales.find(x => x.id === row.id) || null;
+      toast(t(`Vente ${row.ref} encaissée`, `تم تسجيل البيع ${row.ref}`));
+      if (sale) setReceipt(sale);
+      return sale || row;
+    } catch (e) { toast(errText(e, t), 'err'); return null; }
+    finally { setBusy(false); }
+  };
+  const logout = () => sb.auth.signOut();
+
+  if (boot.loading) return <div className="grid min-h-screen place-items-center text-sm text-zinc-500">{t('Chargement…', 'جارٍ التحميل…')}</div>;
+  if (boot.error) return (
+    <div className="grid min-h-screen place-items-center p-6"><Card className="max-w-md p-6 text-center">
+      <div className="text-lg font-bold">{t('Impossible de charger votre espace', 'تعذر تحميل مساحتك')}</div>
+      <p className="mt-2 text-sm text-zinc-600">{boot.error === 'PROFILE_MISSING' ? t('Profil introuvable pour ce compte.', 'لم يتم العثور على ملف لهذا الحساب.') : boot.error}</p>
+      <div className="mt-4 flex justify-center gap-2"><Btn v="ghost" onClick={() => location.reload()}>{t('Réessayer', 'إعادة المحاولة')}</Btn><Btn onClick={logout}>{t('Se déconnecter', 'تسجيل الخروج')}</Btn></div>
+    </Card></div>
+  );
+
+  const ctx = { db, act, reload, busy, toast, t, lang, pn, money, role, view, setView, supplierId, setSupplierId, clientId, setClientId, quote, checkout, rules: db.rules, setReceipt };
+  const View = VIEWS[view] || Dashboard;
+
+  return (
+    <Ctx.Provider value={ctx}>
+      <div className="flex min-h-screen flex-col">
+        <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/85 backdrop-blur">
+          <div className="flex h-14 items-center gap-3 px-4">
+            <div className="flex items-center gap-2.5">
+              <div className="grid h-8 w-8 place-items-center rounded-lg bg-zinc-900 text-[13px] font-extrabold tracking-tight text-white">DJ</div>
+              <div className="hidden leading-tight sm:block"><div className="text-sm font-semibold">Magasin</div><div className="text-[11px] text-zinc-500">{t('Site web officiel & ERP', 'الموقع الرسمي ونظام الإدارة')}</div></div>
+            </div>
+            <div className="ms-auto flex items-center gap-2">
+              <div className="hidden text-end leading-tight sm:block"><div className="max-w-[180px] truncate text-xs font-semibold">{profile.full_name || session.user.email}</div><div className="text-[11px] text-zinc-500">{(ROLES.find(r => r.k === role) || {})[lang === 'ar' ? 'ar' : 'fr']}</div></div>
+              <button onClick={() => setLang(lang === 'fr' ? 'ar' : 'fr')} className="flex items-center gap-1 rounded-xl border border-zinc-200 px-2.5 py-1.5 text-xs font-semibold hover:bg-zinc-50"><Icon n="globe" s={14} />{lang === 'fr' ? 'عربي' : 'FR'}</button>
+              {role === 'admin' || role === 'vendeur' ? <Notifs /> : null}
+              <button onClick={() => act(async () => {}, t('Données actualisées', 'تم تحديث البيانات'))} title={t('Actualiser', 'تحديث')} className={`rounded-xl p-2 text-zinc-500 hover:bg-zinc-100 ${busy ? 'animate-spin' : ''}`}><Icon n="refresh" s={16} /></button>
+              <button onClick={logout} className="rounded-xl border border-zinc-200 px-2.5 py-1.5 text-xs font-semibold hover:bg-zinc-50">{t('Déconnexion', 'خروج')}</button>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex flex-1">
+          <aside className="hidden w-60 shrink-0 flex-col gap-1 border-e border-zinc-200 bg-white p-3 md:flex">
+            <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">{lang === 'ar' ? ROLE_LABEL[role][1] : ROLE_LABEL[role][0]}</div>
+            {NAV[role].map(n => (
+              <button key={n.k} onClick={() => setView(n.k)} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition ${view === n.k ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>
+                <Icon n={n.ic} s={16} />{lang === 'ar' ? n.ar : n.fr}
+              </button>
+            ))}
+            <div className="mt-auto rounded-xl bg-zinc-50 p-3 text-[11px] leading-relaxed text-zinc-500">{t('Données en direct. Stock : Vente −, Achat réceptionné +.', 'بيانات مباشرة. المخزون: البيع يخصم والاستلام يضيف.')}</div>
+          </aside>
+          <main className="min-w-0 flex-1 p-4 md:p-6">
+            <div className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 md:hidden">
+              {NAV[role].map(n => <button key={n.k} onClick={() => setView(n.k)} className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${view === n.k ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 ring-1 ring-zinc-200'}`}><Icon n={n.ic} s={13} />{lang === 'ar' ? n.ar : n.fr}</button>)}
+            </div>
+            <div key={role + view} className="fade-up"><View /></div>
+          </main>
+        </div>
+      </div>
+      <Toasts list={toasts} />
+      {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} />}
+    </Ctx.Provider>
+  );
+}
+
+
+/* ───────────────────────── Connexion ───────────────────────── */
+function AuthScreen({ lang, setLang }) {
+  const t = (fr, ar) => lang === 'ar' ? ar : fr;
+  const [mode, setMode] = useState('login');
+  const [email, setEmail] = useState('');
+  const [pw, setPw] = useState('');
+  const [name, setName] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const authErr = m => /invalid login/i.test(m) ? t('E-mail ou mot de passe incorrect', 'البريد أو كلمة المرور غير صحيحة')
+    : /already registered|already been registered/i.test(m) ? t('Cet e-mail a déjà un compte', 'هذا البريد لديه حساب بالفعل')
+    : /at least|weak|short/i.test(m) ? t('Mot de passe trop court (6 caractères minimum)', 'كلمة المرور قصيرة (6 أحرف على الأقل)')
+    : /confirm/i.test(m) ? t('Confirmez d’abord votre e-mail', 'أكّد بريدك أولاً') : m;
+  const submit = async e => {
+    e.preventDefault();
+    if (!email.trim() || !pw) return;
+    setBusy(true); setMsg(null);
+    try {
+      if (mode === 'login') {
+        const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw });
+        if (error) throw error;
+      } else {
+        const { data, error } = await sb.auth.signUp({ email: email.trim(), password: pw, options: { data: { full_name: name.trim() } } });
+        if (error) throw error;
+        if (!data.session) setMsg({ ok: true, text: t('Compte créé. Vérifiez votre e-mail pour confirmer, puis connectez-vous.', 'تم إنشاء الحساب. تحقق من بريدك للتأكيد ثم سجّل الدخول.') });
+      }
+    } catch (err) { setMsg({ ok: false, text: authErr(String(err.message || err)) }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="grid min-h-screen place-items-center p-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-2.5"><div className="grid h-9 w-9 place-items-center rounded-lg bg-zinc-900 text-sm font-extrabold text-white">DJ</div><div className="leading-tight"><div className="font-semibold">Magasin</div><div className="text-[11px] text-zinc-500">{t('Site web officiel & ERP', 'الموقع الرسمي ونظام الإدارة')}</div></div></div>
+          <button onClick={() => setLang(lang === 'fr' ? 'ar' : 'fr')} className="flex items-center gap-1 rounded-xl border border-zinc-200 px-2.5 py-1.5 text-xs font-semibold hover:bg-zinc-50"><Icon n="globe" s={14} />{lang === 'fr' ? 'عربي' : 'FR'}</button>
+        </div>
+        <Card className="p-6">
+          <h1 className="text-xl font-bold tracking-tight">{mode === 'login' ? t('Connexion', 'تسجيل الدخول') : t('Créer un compte client', 'إنشاء حساب زبون')}</h1>
+          <p className="mt-1 text-sm text-zinc-500">{mode === 'login' ? t('Accédez à votre espace.', 'ادخل إلى مساحتك.') : t('Gagnez des points à chaque achat.', 'اجمع النقاط مع كل عملية شراء.')}</p>
+          <form onSubmit={submit} className="mt-5 space-y-3">
+            {mode === 'signup' && <Field label={t('Nom complet', 'الاسم الكامل')}><Input value={name} onChange={e => setName(e.target.value)} autoComplete="name" /></Field>}
+            <Field label="E-mail"><Input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" required dir="ltr" /></Field>
+            <Field label={t('Mot de passe', 'كلمة المرور')}><Input type="password" value={pw} onChange={e => setPw(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={6} dir="ltr" /></Field>
+            {msg && <div className={`rounded-xl px-3 py-2 text-xs ${msg.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-700'}`}>{msg.text}</div>}
+            <button type="submit" disabled={busy} className="w-full rounded-xl bg-zinc-900 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-50">{busy ? '…' : mode === 'login' ? t('Se connecter', 'دخول') : t('Créer mon compte', 'إنشاء حسابي')}</button>
+          </form>
+          <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMsg(null); }} className="mt-4 w-full text-center text-xs font-medium text-zinc-600 hover:text-zinc-900">
+            {mode === 'login' ? t('Pas de compte ? Créer un compte client', 'ليس لديك حساب؟ أنشئ حساب زبون') : t('Déjà un compte ? Se connecter', 'لديك حساب؟ سجّل الدخول')}
+          </button>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [lang, setLang] = useState('fr');
+  const [session, setSession] = useState(undefined);
+  useEffect(() => {
+    sb.auth.getSession().then(({ data }) => setSession(data.session || null));
+    const { data: sub } = sb.auth.onAuthStateChange((_e, sess) => setSession(sess || null));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+  useEffect(() => { document.documentElement.lang = lang === 'ar' ? 'ar' : 'fr'; document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'; }, [lang]);
+  if (session === undefined) return <div className="grid min-h-screen place-items-center text-sm text-zinc-500">Chargement…</div>;
+  if (!session) return <AuthScreen lang={lang} setLang={setLang} />;
+  return <Shell key={session.user.id} session={session} lang={lang} setLang={setLang} />;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
