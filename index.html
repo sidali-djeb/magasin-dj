@@ -95,7 +95,7 @@ const ERR = {
   VOUCHER_MIN_TOTAL: ['Montant minimum non atteint', 'الحد الأدنى غير مستوفى'],
   FORBIDDEN: ['Action non autorisée pour votre rôle', 'إجراء غير مسموح لدورك'], EMPTY_CART: ['Panier vide', 'السلة فارغة'],
   INVALID_QTY: ['Quantité invalide', 'كمية غير صالحة'], UNKNOWN_PRODUCT: ['Produit introuvable', 'منتج غير موجود'],
-  NOT_FOUND: ['Introuvable', 'غير موجود'], INVALID_TRANSITION: ['Changement de statut impossible', 'تغيير الحالة غير ممكن'],
+  NOT_FOUND: ['Introuvable', 'غير موجود'], CANNOT_DEMOTE_SELF: ['Vous ne pouvez pas retirer votre propre rôle admin', 'لا يمكنك إزالة دورك كمدير'], SUPPLIER_REQUIRED: ['Choisissez le fournisseur à rattacher', 'اختر المورد المراد ربطه'], INVALID_TRANSITION: ['Changement de statut impossible', 'تغيير الحالة غير ممكن'],
   INVALID_STATUS: ['Statut incompatible', 'حالة غير متوافقة'], EMPTY_ORDER: ['Commande vide', 'الطلب فارغ'],
   NOTHING_TO_RESTOCK: ['Rien à réassortir', 'لا شيء لإعادة تخزينه'],
 };
@@ -1292,6 +1292,62 @@ function Fournisseur({ mode }) {
   );
 }
 
+/* ───────────────────────── Utilisateurs & rôles (admin) ───────────────────────── */
+function Utilisateurs() {
+  const { db, act, t, lang, toast } = useApp();
+  const [users, setUsers] = useState(null);
+  const [err, setErr] = useState(null);
+  const load = async () => { try { setUsers(await must(sb.rpc('admin_list_users'))); setErr(null); } catch (e) { setErr(errText(e, t)); } };
+  useEffect(() => { load(); }, []);
+  const RL = { admin: ['Admin', 'مدير'], vendeur: ['Vendeur', 'بائع'], fournisseur: ['Fournisseur', 'مورد'], client: ['Client', 'زبون'] };
+  const setRole = async (u, role, supplier) => {
+    if (role === 'fournisseur' && !supplier) { toast(t('Choisissez d’abord le fournisseur à rattacher', 'اختر المورد أولاً'), 'err'); setUsers(x => x.map(y => y.id === u.id ? { ...y, role: 'fournisseur' } : y)); return; }
+    const ok = await act(() => must(sb.rpc('admin_set_user_role', { p_user: u.id, p_role: role, p_supplier: role === 'fournisseur' ? supplier : null })), t('Rôle mis à jour', 'تم تحديث الدور'));
+    load();
+  };
+  const sel = 'rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-sm';
+  return (
+    <div>
+      <PageTitle title={t('Utilisateurs & rôles', 'المستخدمون والأدوار')} sub={t('Chaque personne crée son compte sur le site ; vous lui attribuez ici son rôle.', 'ينشئ كل شخص حسابه في الموقع وتمنحونه دوره هنا.')} />
+      <Card className="mb-4 p-4 text-sm text-zinc-600">
+        <div className="mb-1 font-semibold text-zinc-800">{t('Comment ajouter un fournisseur, un vendeur ou un autre admin', 'كيف تضيف مورداً أو بائعاً أو مديراً آخر')}</div>
+        <ol className="list-decimal space-y-0.5 ps-5">
+          <li>{t('Créez d’abord la fiche du fournisseur dans « Fournisseurs » (pour un fournisseur).', 'أنشئ بطاقة المورد في «الموردون» (للمورد).')}</li>
+          <li>{t('La personne ouvre le site et clique sur « Créer un compte client ».', 'يفتح الشخص الموقع وينقر «إنشاء حساب زبون».')}</li>
+          <li>{t('Elle apparaît ci-dessous : choisissez son rôle (et le fournisseur à rattacher).', 'سيظهر أدناه: اختر دوره (والمورد المراد ربطه).')}</li>
+        </ol>
+      </Card>
+      {err && <Card className="p-4 text-sm text-rose-700">{err}</Card>}
+      {!users && !err && <Card className="p-6 text-center text-sm text-zinc-500">{t('Chargement…', 'جارٍ التحميل…')}</Card>}
+      {users && (
+        <Card className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="border-b border-zinc-100 text-start text-xs text-zinc-500"><th className="px-4 py-3 text-start font-medium">{t('Nom', 'الاسم')}</th><th className="px-4 py-3 text-start font-medium">E-mail</th><th className="px-4 py-3 text-start font-medium">{t('Rôle', 'الدور')}</th><th className="px-4 py-3 text-start font-medium">{t('Fournisseur rattaché', 'المورد المرتبط')}</th></tr></thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u.id} className="border-b border-zinc-50 last:border-0">
+                  <td className="px-4 py-3 font-medium">{u.full_name || '—'}</td>
+                  <td className="px-4 py-3 text-zinc-600" dir="ltr">{u.email}</td>
+                  <td className="px-4 py-3">
+                    <select value={u.role} onChange={e => setRole(u, e.target.value, u.supplier_id)} className={sel}>
+                      {Object.keys(RL).map(k => <option key={k} value={k}>{RL[k][lang === 'ar' ? 1 : 0]}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    {u.role === 'fournisseur'
+                      ? <select value={u.supplier_id || ''} onChange={e => setRole(u, 'fournisseur', e.target.value)} className={sel}><option value="">{t('— choisir —', '— اختر —')}</option>{db.suppliers.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+                      : <span className="text-zinc-400">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 /* ───────────────────────── Application ───────────────────────── */
 const NAV = {
   admin: [
@@ -1303,6 +1359,7 @@ const NAV = {
     { k: 'fid', fr: 'Système de fidélité', ar: 'نظام الولاء', ic: 'star' },
     { k: 'bons', fr: "Bons d'achat", ar: 'قسائم الشراء', ic: 'gift' },
     { k: 'site', fr: 'Site web officiel', ar: 'الموقع الرسمي', ic: 'globe' },
+    { k: 'users', fr: 'Utilisateurs', ar: 'المستخدمون', ic: 'user' },
   ],
   vendeur: [
     { k: 'pos', fr: 'Vente (caisse)', ar: 'البيع (الصندوق)', ic: 'cart' },
@@ -1328,7 +1385,7 @@ const VIEWS = {
   dash: Dashboard, stock: () => <StockView />, achat: Achats, fourn: Fournisseurs, ventes: Ventes, fid: Fidelite, bons: Bons, site: Storefront,
   pos: POS, vjour: VentesJour, stockv: () => <StockView readonly />,
   portail: () => <Fournisseur mode="portail" />, reassort: () => <Fournisseur mode="reassort" />,
-  boutique: Storefront, mesp: MesPoints,
+  boutique: Storefront, mesp: MesPoints, users: Utilisateurs,
 };
 
 function Shell({ session, lang, setLang }) {
