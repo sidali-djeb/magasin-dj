@@ -1449,7 +1449,11 @@ function Shell({ session, lang, setLang }) {
     } catch (e) { toast(errText(e, t), 'err'); return null; }
     finally { setBusy(false); }
   };
-  const logout = () => sb.auth.signOut();
+  const logout = async () => {
+    try { await sb.auth.signOut({ scope: 'local' }); } catch (e) {}
+    try { Object.keys(localStorage).filter(k => k.startsWith('magasin-dj-auth')).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+    location.reload();
+  };
 
   if (boot.loading) return <div className="grid min-h-screen place-items-center text-sm text-zinc-500">{t('Chargement…', 'جارٍ التحميل…')}</div>;
   if (boot.error) return (
