@@ -521,9 +521,9 @@ const Input = ({ className = '', ...p }) => <input {...p} className={`w-full rou
 const Select = ({ children, className = '', ...p }) => <select {...p} className={`w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900/10 ${className}`}>{children}</select>;
 const Field = ({ label, children }) => <label className="block"><span className="mb-1 block text-xs font-medium text-zinc-500">{label}</span>{children}</label>;
 const Modal = ({ title, onClose, children, wide }) => (
-  <div className="fade-up fixed inset-0 z-50 grid place-items-center bg-zinc-900/40 p-4 backdrop-blur-sm" onClick={onClose}>
+  <div className="fade-up fixed inset-0 z-50 grid place-items-center bg-zinc-900/40 p-4 backdrop-blur-sm">
     <div onClick={e => e.stopPropagation()} className={`max-h-[90vh] w-full overflow-auto rounded-2xl bg-white shadow-xl ${wide ? 'max-w-2xl' : 'max-w-md'}`}>
-      <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4"><h3 className="font-semibold">{title}</h3><button onClick={onClose} className="rounded-lg p-1 hover:bg-zinc-100"><Icon n="x" /></button></div>
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-100 bg-white px-5 py-4"><h3 className="font-semibold">{title}</h3><button onClick={onClose} aria-label="Fermer" className="rounded-lg bg-zinc-100 p-1.5 hover:bg-zinc-200"><Icon n="x" /></button></div>
       <div className="p-5">{children}</div>
     </div>
   </div>
@@ -1744,6 +1744,7 @@ const NAV = {
     { k: 'stock', fr: 'Gestion de stock', ar: 'إدارة المخزون', ic: 'box' },
     { k: 'achat', fr: 'Achat', ar: 'المشتريات', ic: 'truck' },
     { k: 'fourn', fr: 'Fournisseurs', ar: 'الموردون', ic: 'users' },
+    { k: 'pos', fr: 'Comptoir', ar: 'الصندوق', ic: 'cart' },
     { k: 'ventes', fr: 'Ventes', ar: 'المبيعات', ic: 'receipt' },
     { k: 'fid', fr: 'Système de fidélité', ar: 'نظام الولاء', ic: 'star' },
     { k: 'bons', fr: "Bons d'achat", ar: 'قسائم الشراء', ic: 'gift' },
