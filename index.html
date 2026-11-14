@@ -95,7 +95,7 @@ const ERR = {
   VOUCHER_MIN_TOTAL: ['Montant minimum non atteint', 'الحد الأدنى غير مستوفى'],
   FORBIDDEN: ['Action non autorisée pour votre rôle', 'إجراء غير مسموح لدورك'], EMPTY_CART: ['Panier vide', 'السلة فارغة'],
   INVALID_QTY: ['Quantité invalide', 'كمية غير صالحة'], UNKNOWN_PRODUCT: ['Produit introuvable', 'منتج غير موجود'],
-  NOT_FOUND: ['Introuvable', 'غير موجود'], CANNOT_DEMOTE_SELF: ['Vous ne pouvez pas retirer votre propre rôle admin', 'لا يمكنك إزالة دورك كمدير'], SUPPLIER_REQUIRED: ['Choisissez le fournisseur à rattacher', 'اختر المورد المراد ربطه'], INVALID_TRANSITION: ['Changement de statut impossible', 'تغيير الحالة غير ممكن'],
+  NOT_FOUND: ['Introuvable', 'غير موجود'], SKU_REQUIRED: ['SKU requis pour chaque variante', 'الرمز مطلوب لكل متغير'], VARIANT_REQUIRED: ['Au moins une variante est requise', 'يلزم متغير واحد على الأقل'], CANNOT_DEMOTE_SELF: ['Vous ne pouvez pas retirer votre propre rôle admin', 'لا يمكنك إزالة دورك كمدير'], SUPPLIER_REQUIRED: ['Choisissez le fournisseur à rattacher', 'اختر المورد المراد ربطه'], INVALID_TRANSITION: ['Changement de statut impossible', 'تغيير الحالة غير ممكن'],
   INVALID_STATUS: ['Statut incompatible', 'حالة غير متوافقة'], EMPTY_ORDER: ['Commande vide', 'الطلب فارغ'],
   NOTHING_TO_RESTOCK: ['Rien à réassortir', 'لا شيء لإعادة تخزينه'],
 };
@@ -113,7 +113,7 @@ const errText = (e, t) => {
 async function loadAll(role) {
   const rows = async q => (await must(q)) || [];
   const prodQ = role === 'client' ? sb.from('storefront_products').select('*').order('name') : sb.from('products').select('*').eq('active', true).order('name');
-  const [prods, sups, cls, sales, pos, vs, rl] = await Promise.all([
+  const [prods, sups, cls, sales, pos, vs, rl, vars] = await Promise.all([
     rows(prodQ),
     rows(sb.from('suppliers').select('*').order('name')),
     rows(sb.from('clients').select('*').order('name')),
@@ -121,24 +121,31 @@ async function loadAll(role) {
     rows(sb.from('purchase_orders').select('*, purchase_order_items(*)').order('created_at', { ascending: false })),
     rows(sb.from('vouchers').select('*').order('created_at', { ascending: false })),
     rows(sb.from('loyalty_rules').select('*').eq('id', 1)),
+    rows(role === 'client' ? sb.from('storefront_variants').select('*') : sb.from('product_variants').select('*').eq('active', true).order('created_at')),
   ]);
+  const pPrice = Object.fromEntries(prods.map(x => [x.id, Number(x.price)]));
+  const byP = {};
+  vars.forEach(v => { (byP[v.product_id] = byP[v.product_id] || []).push({ id: v.id, pid: v.product_id, color: v.color || '', size: v.size || '', sku: v.sku || '', priceOverride: role === 'client' || v.price === null ? null : Number(v.price), price: v.price === null || v.price === undefined ? pPrice[v.product_id] : Number(v.price), stock: v.stock }); });
+  const sizeIdx = z => { const i = SIZE_ORDER.indexOf(z); return i < 0 ? 999 : i; };
+  Object.values(byP).forEach(list => list.sort((a, b) => (a.color || '').localeCompare(b.color || '') || sizeIdx(a.size) - sizeIdx(b.size)));
+  const uniqJoin = (list, k) => [...new Set((list || []).map(v => v[k]).filter(Boolean))].join(', ');
   const clients = cls.map(c => ({ id: c.id, name: c.name, email: c.email || '', phone: c.phone || '', earned: c.points_earned_total, pts: c.points_balance, spend: Number(c.total_spent) }));
   const cname = Object.fromEntries(clients.map(c => [c.id, c.name]));
   const r = rl[0];
   return {
-    products: prods.map(p => ({ id: p.id, sku: p.sku, name: p.name, ar: p.name_ar || p.name, cat: CAT_FROM[p.category] || 'Accessoires', price: Number(p.price), cost: Number(p.cost || 0), stock: p.stock, reorder: p.reorder_level, sup: p.supplier_id, fabric: p.fabric || '', color: p.color || '', sizes: p.sizes || '', emoji: p.emoji || '🏷️', img: p.image_url || '', bg: bgOf(p.sku) })),
+    products: prods.map(p => ({ id: p.id, sku: p.sku, name: p.name, ar: p.name_ar || p.name, cat: CAT_FROM[p.category] || 'Accessoires', price: Number(p.price), cost: Number(p.cost || 0), stock: p.stock, reorder: p.reorder_level, sup: p.supplier_id, fabric: p.fabric || '', color: uniqJoin(byP[p.id], 'color'), sizes: uniqJoin(byP[p.id], 'size'), variants: byP[p.id] || [], emoji: p.emoji || '🏷️', img: p.image_url || '', bg: bgOf(p.sku) })),
     suppliers: sups.map(x => ({ id: x.id, name: x.name, contact: x.contact_name || '', email: x.email || '', city: x.city || '', leadDays: x.lead_days, rating: Number(x.rating || 0) })),
     clients,
     sales: sales.map(x => ({
       id: x.id, ref: x.ref, date: x.created_at.slice(0, 10), channel: x.channel === 'web' ? 'Web' : 'POS', clientId: x.client_id,
       clientName: cname[x.client_id] || 'Client de passage',
-      lines: (x.sale_items || []).map(i => ({ pid: i.product_id, name: i.name, ar: i.name_ar || i.name, qty: i.qty, price: Number(i.unit_price) })),
+      lines: (x.sale_items || []).map(i => ({ pid: i.product_id, vid: i.variant_id, name: i.name, ar: i.name_ar || i.name, qty: i.qty, price: Number(i.unit_price) })),
       subtotal: Number(x.subtotal), tierDisc: Number(x.tier_discount), voucherDisc: Number(x.voucher_discount), voucher: x.voucher_code,
       pointsUsed: x.points_used, pointsDisc: Number(x.points_discount), pointsEarned: x.points_earned, total: Number(x.total), tier: cap(x.tier),
     })),
     purchases: pos.map(x => ({
       id: x.id, ref: x.ref, supplierId: x.supplier_id, date: x.created_at.slice(0, 10), expected: x.expected_date || '—', status: PO_FROM[x.status],
-      lines: (x.purchase_order_items || []).map(i => ({ id: i.id, pid: i.product_id, qty: i.qty, received: i.received_qty, cost: Number(i.unit_cost) })),
+      lines: (x.purchase_order_items || []).map(i => ({ id: i.id, pid: i.product_id, vid: i.variant_id, qty: i.qty, received: i.received_qty, cost: Number(i.unit_cost) })),
     })),
     vouchers: vs.map(v => ({ id: v.id, code: v.code, kind: v.kind, type: v.discount_type, value: Number(v.value), minTotal: Number(v.min_total), expires: v.expires_at, limit: v.usage_limit, used: v.used_count, active: v.active })),
     rules: r ? { perDA: r.points_per_da, redeemValue: Number(r.redeem_value), tiers: { Silver: r.silver_threshold, Gold: r.gold_threshold }, mult: { Bronze: 1, Silver: Number(r.mult_silver), Gold: Number(r.mult_gold) }, disc: { Bronze: 0, Silver: Number(r.disc_silver), Gold: Number(r.disc_gold) } } : DEFAULT_RULES,
@@ -338,6 +345,84 @@ function SizePicker({ value, onChange }) {
   );
 }
 
+/* Variantes (couleur × taille) */
+const vLabel = (v, lang) => { const c = v.color ? parseColor(v.color) : null; const col = c ? (lang === 'ar' && c.ar ? c.ar : c.label) : ''; return [col, v.size].filter(Boolean).join(' / '); };
+const vLabelOf = (p, vid, lang) => { const v = p && p.variants.find(x => x.id === vid); return v ? vLabel(v, lang) : ''; };
+const autoSku = (base, color, size) => [String(base || '').trim(), color && parseColor(color).label.replace(/[^A-Za-z0-9]/g, '').slice(0, 4), size && String(size).replace(/\s+/g, '')].filter(Boolean).join('-').toUpperCase();
+const packVariants = (list, baseSku) => list.map(v => ({ id: v.id || null, color: v.color || null, size: v.size || null, sku: (v.sku && v.sku.trim() ? v.sku : autoSku(baseSku, v.color, v.size)).toUpperCase(), price: v.price === '' || v.price === null || v.price === undefined ? null : +v.price, stock: Math.max(0, Math.floor(+v.stock) || 0) }));
+
+function VariantEditor({ baseSku, variants, setVariants }) {
+  const { t, lang } = useApp();
+  const [colors, setColors] = useState(() => [...new Set(variants.map(v => v.color).filter(Boolean))].join(', '));
+  const [sizes, setSizes] = useState(() => [...new Set(variants.map(v => v.size).filter(Boolean))].join(', '));
+  const regenerate = (cs, zs) => {
+    const C = splitList(cs), Z = splitList(zs);
+    const combos = (C.length ? C : ['']).flatMap(c => (Z.length ? Z : ['']).map(z => ({ c, z })));
+    setVariants(old => {
+      const key = (c, z) => (c || '') + '|' + (z || '');
+      const byKey = Object.fromEntries(old.map(v => [key(v.color, v.size), v]));
+      return combos.map(({ c, z }) => byKey[key(c, z)] || { color: c, size: z, sku: '', price: '', stock: 0 });
+    });
+  };
+  const upd = (i, k, val) => setVariants(old => old.map((x, j) => j === i ? { ...x, [k]: val } : x));
+  const total = variants.reduce((s, v) => s + (Math.max(0, Math.floor(+v.stock) || 0)), 0);
+  return (
+    <>
+      <ColorPicker value={colors} onChange={v => { setColors(v); regenerate(v, sizes); }} />
+      <SizePicker value={sizes} onChange={v => { setSizes(v); regenerate(colors, v); }} />
+      <div className="sm:col-span-2">
+        <div className="mb-1 flex items-center justify-between"><span className="text-xs font-medium text-zinc-500">{t('Variantes (une ligne par couleur × taille)', 'المتغيرات (سطر لكل لون × مقاس)')}</span><span className="text-xs text-zinc-500">{t('Stock total', 'إجمالي المخزون')} : <b className="tabular">{total}</b></span></div>
+        <div className="overflow-x-auto rounded-xl border border-zinc-200">
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-50 text-[11px] uppercase tracking-wider text-zinc-500"><tr>{[t('Variante', 'المتغير'), 'SKU', t('Prix (vide = prix du produit)', 'السعر (فارغ = سعر المنتج)'), t('Stock', 'المخزون')].map(h => <th key={h} className="px-2 py-2 text-start font-semibold">{h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-zinc-100">
+              {variants.map((v, i) => { const c = v.color ? parseColor(v.color) : null; return (
+                <tr key={(v.color || '') + '|' + (v.size || '') + i}>
+                  <td className="whitespace-nowrap px-2 py-1.5"><span className="inline-flex items-center gap-1.5">{c && <span className="inline-block h-3.5 w-3.5 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}{vLabel(v, lang) || t('Standard', 'قياسي')}</span></td>
+                  <td className="px-2 py-1.5"><Input value={v.sku} onChange={e => upd(i, 'sku', e.target.value)} placeholder={autoSku(baseSku, v.color, v.size) || 'SKU'} className="!w-40 !py-1 font-mono text-xs" /></td>
+                  <td className="px-2 py-1.5"><Input type="number" min="0" value={v.price} onChange={e => upd(i, 'price', e.target.value)} className="!w-28 !py-1" /></td>
+                  <td className="px-2 py-1.5"><Input type="number" min="0" value={v.stock} onChange={e => upd(i, 'stock', e.target.value)} className="!w-20 !py-1" /></td>
+                </tr>); })}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-1 text-xs text-zinc-400">{t('Cochez couleurs et tailles ci-dessus : les lignes se créent toutes seules. Décocher une taille retire sa variante.', 'اختر الألوان والمقاسات أعلاه فتُنشأ الأسطر تلقائياً. إلغاء مقاس يزيل متغيره.')}</p>
+      </div>
+    </>
+  );
+}
+
+function VariantPicker({ p, onPick, onClose }) {
+  const { t, lang, money, pn } = useApp();
+  const colors = [...new Set(p.variants.map(v => v.color || ''))];
+  const [col, setCol] = useState(() => (p.variants.find(v => v.stock > 0) || p.variants[0] || {}).color || '');
+  const sizes = p.variants.filter(v => (v.color || '') === col);
+  const cname = c => { if (!c) return t('Standard', 'قياسي'); const x = parseColor(c); return lang === 'ar' && x.ar ? x.ar : x.label; };
+  return (
+    <Modal title={pn(p)} onClose={onClose}>
+      {(colors.length > 1 || colors[0]) && (
+        <div className="mb-4">
+          <div className="mb-1.5 text-xs font-medium text-zinc-500">{t('Couleur', 'اللون')}</div>
+          <div className="flex flex-wrap gap-2">
+            {colors.map(c => { const x = c ? parseColor(c) : null; const tot = p.variants.filter(v => (v.color || '') === c).reduce((a, v) => a + v.stock, 0);
+              return <button key={c} type="button" onClick={() => setCol(c)} className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm transition ${col === c ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-200 hover:border-zinc-400'} ${tot <= 0 ? 'opacity-50' : ''}`}>{x && <span className="inline-block h-4 w-4 rounded-full border border-zinc-300" style={dotStyle(x.hex)} />}{cname(c)}</button>; })}
+          </div>
+        </div>
+      )}
+      <div className="mb-1.5 text-xs font-medium text-zinc-500">{t('Taille', 'المقاس')}</div>
+      <div className="flex flex-wrap gap-2">
+        {sizes.map(v => (
+          <button key={v.id} type="button" disabled={v.stock <= 0} onClick={() => onPick(v)} className="min-w-[72px] rounded-xl border border-zinc-200 px-3 py-2 text-center text-sm transition hover:border-zinc-900 disabled:cursor-not-allowed disabled:opacity-40">
+            <div className={`font-semibold ${v.stock <= 0 ? 'line-through' : ''}`}>{v.size || t('Unique', 'واحد')}</div>
+            <div className="text-[10px] text-zinc-500">{v.stock > 0 ? `${v.stock} ${t('en stock', 'متوفر')}` : t('Épuisé', 'نفد')}</div>
+            {v.price !== p.price && <div className="tabular text-[10px] font-medium text-zinc-700">{money(v.price)}</div>}
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
 /* Champ numérique : n'envoie la valeur au serveur qu'à la validation (Entrée / perte de focus) */
 function NumInput({ value, onCommit, min = 0, className = '' }) {
   const [v, setV] = useState(String(value));
@@ -365,7 +450,7 @@ function checkVoucher(code, vouchers, subtotal, t) {
 }
 
 function quoteSale(db, { cart, clientId, code, usePts }, t) {
-  const lines = cart.map(l => { const p = db.products.find(x => x.id === l.pid); return p ? { pid: p.id, name: p.name, ar: p.ar, qty: l.qty, price: p.price, stock: p.stock } : null; }).filter(Boolean);
+  const lines = cart.map(l => { const p = db.products.find(x => x.id === l.pid); const v = p && p.variants.find(x => x.id === l.vid); if (!v) return null; const fr = vLabel(v, 'fr'), ar = vLabel(v, 'ar'); return { pid: p.id, vid: v.id, name: p.name + (fr ? ` (${fr})` : ''), ar: p.ar + (ar ? ` (${ar})` : ''), qty: l.qty, price: v.price, stock: v.stock }; }).filter(Boolean);
   const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
   const client = db.clients.find(c => c.id === clientId) || null;
   const vr = code ? checkVoucher(code, db.vouchers, subtotal, t) : null;
@@ -682,15 +767,17 @@ function Dashboard() {
 function AddProductModal({ onClose }) {
   const { db, act, toast, t } = useApp();
   const [file, setFile] = useState(null);
+  const [variants, setVariants] = useState([{ color: '', size: '', sku: '', price: '', stock: 0 }]);
   const [f, setF] = useState({ name: '', ar: '', sku: '', cat: 'Hommes', price: 0, cost: 0, stock: 0, reorder: 5, sup: db.suppliers[0]?.id || '', fabric: '', color: '', sizes: '', emoji: '🏷️' });
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
   const save = async () => {
     if (!f.name.trim() || !f.sku.trim()) { toast(t('Nom et SKU requis', 'الاسم والرمز مطلوبان'), 'err'); return; }
     if (db.products.some(p => p.sku === f.sku.trim())) { toast(t('SKU déjà utilisé', 'الرمز مستعمل'), 'err'); return; }
     const done = await act(async () => {
-      const row = await must(sb.from('products').insert({ sku: f.sku.trim().toUpperCase(), name: f.name.trim(), name_ar: f.ar.trim() || null, category: CAT_TO[f.cat], price: +f.price || 0, cost: +f.cost || 0, reorder_level: Math.max(0, Math.floor(+f.reorder) || 0), supplier_id: f.sup || null, fabric: f.fabric || null, color: f.color.trim() || null, sizes: f.sizes.trim() || null, emoji: f.emoji || '🏷️' }).select('id').single());
+      const row = await must(sb.from('products').insert({ sku: f.sku.trim().toUpperCase(), name: f.name.trim(), name_ar: f.ar.trim() || null, category: CAT_TO[f.cat], price: +f.price || 0, cost: +f.cost || 0, reorder_level: Math.max(0, Math.floor(+f.reorder) || 0), supplier_id: f.sup || null, fabric: f.fabric || null, emoji: f.emoji || '🏷️' }).select('id').single());
+      try { await must(sb.rpc('save_variants', { p_product_id: row.id, p_variants: packVariants(variants, f.sku) })); }
+      catch (e) { await sb.from('products').delete().eq('id', row.id); throw e; }
       if (file) await uploadProductImage(file, row.id);
-      if ((+f.stock || 0) > 0) await must(sb.rpc('set_stock', { p_product_id: row.id, p_stock: Math.floor(+f.stock), p_note: 'Stock initial' }));
     }, t('Produit ajouté', 'تمت إضافة المنتج'));
     if (done) onClose();
   };
@@ -703,12 +790,10 @@ function AddProductModal({ onClose }) {
         <Field label={t('Catégorie', 'الفئة')}><Select value={f.cat} onChange={e => set('cat', e.target.value)}>{CATS.map(c => <option key={c}>{c}</option>)}</Select></Field>
         <Field label={t('Prix de vente (DA)', 'سعر البيع (د.ج)')}><Input type="number" value={f.price} onChange={e => set('price', e.target.value)} /></Field>
         <Field label={t("Coût d'achat (DA)", 'تكلفة الشراء (د.ج)')}><Input type="number" value={f.cost} onChange={e => set('cost', e.target.value)} /></Field>
-        <Field label={t('Stock initial', 'المخزون الأولي')}><Input type="number" value={f.stock} onChange={e => set('stock', e.target.value)} /></Field>
         <Field label={t('Seuil de réassort', 'حد إعادة التخزين')}><Input type="number" value={f.reorder} onChange={e => set('reorder', e.target.value)} /></Field>
         <Field label={t('Fournisseur', 'المورد')}><Select value={f.sup} onChange={e => set('sup', e.target.value)}>{db.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
         <Field label={t('Tissu', 'القماش')}><Input value={f.fabric} onChange={e => set('fabric', e.target.value)} /></Field>
-        <ColorPicker value={f.color} onChange={v => set('color', v)} />
-        <SizePicker value={f.sizes} onChange={v => set('sizes', v)} />
+        <VariantEditor baseSku={f.sku} variants={variants} setVariants={setVariants} />
         <Field label={t('Photo du produit', 'صورة المنتج')}>
           <div className="flex items-center gap-3">
             {file ? <img src={URL.createObjectURL(file)} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-zinc-200" /> : <span className="grid h-12 w-12 place-items-center rounded-lg bg-zinc-100 text-xl">📷</span>}
@@ -724,9 +809,13 @@ function EditProductModal({ p, onClose }) {
   const { db, act, t, toast } = useApp();
   const [f, setF] = useState({ name: p.name, ar: p.ar === p.name ? '' : p.ar, sku: p.sku, cat: p.cat, price: p.price, cost: p.cost, reorder: p.reorder, sup: p.sup || '', fabric: p.fabric, color: p.color, sizes: p.sizes, emoji: p.emoji });
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
+  const [variants, setVariants] = useState(() => p.variants.map(v => ({ id: v.id, color: v.color, size: v.size, sku: v.sku, price: v.priceOverride === null || v.priceOverride === undefined ? '' : v.priceOverride, stock: v.stock })));
   const save = async () => {
     if (!f.name.trim() || !f.sku.trim()) { toast(t('Nom et SKU requis', 'الاسم والرمز مطلوبان'), 'err'); return; }
-    const done = await act(() => must(sb.from('products').update({ name: f.name.trim(), name_ar: f.ar.trim() || null, sku: f.sku.trim().toUpperCase(), category: CAT_TO[f.cat], price: +f.price || 0, cost: +f.cost || 0, reorder_level: Math.max(0, Math.floor(+f.reorder) || 0), supplier_id: f.sup || null, fabric: f.fabric.trim() || null, color: f.color.trim() || null, sizes: f.sizes.trim() || null, emoji: f.emoji.trim() || '🏷️' }).eq('id', p.id)), t('Produit mis à jour', 'تم تحديث المنتج'));
+    const done = await act(async () => {
+      await must(sb.from('products').update({ name: f.name.trim(), name_ar: f.ar.trim() || null, sku: f.sku.trim().toUpperCase(), category: CAT_TO[f.cat], price: +f.price || 0, cost: +f.cost || 0, reorder_level: Math.max(0, Math.floor(+f.reorder) || 0), supplier_id: f.sup || null, fabric: f.fabric.trim() || null, emoji: f.emoji.trim() || '🏷️' }).eq('id', p.id));
+      await must(sb.rpc('save_variants', { p_product_id: p.id, p_variants: packVariants(variants, f.sku) }));
+    }, t('Produit mis à jour', 'تم تحديث المنتج'));
     if (done) onClose();
   };
   const archive = async () => {
@@ -746,11 +835,10 @@ function EditProductModal({ p, onClose }) {
         <Field label={t('Seuil de réassort', 'حد إعادة التخزين')}><Input type="number" value={f.reorder} onChange={e => set('reorder', e.target.value)} /></Field>
         <Field label={t('Fournisseur', 'المورد')}><Select value={f.sup} onChange={e => set('sup', e.target.value)}><option value="">—</option>{db.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
         <Field label={t('Tissu', 'القماش')}><Input value={f.fabric} onChange={e => set('fabric', e.target.value)} /></Field>
-        <ColorPicker value={f.color} onChange={v => set('color', v)} />
-        <SizePicker value={f.sizes} onChange={v => set('sizes', v)} />
+        <VariantEditor baseSku={f.sku} variants={variants} setVariants={setVariants} />
         <Field label={t('Emoji (si pas de photo)', 'رمز (عند غياب الصورة)')}><Input value={f.emoji} onChange={e => set('emoji', e.target.value)} /></Field>
       </div>
-      <p className="mt-3 text-xs text-zinc-500">{t('Le stock se règle dans le tableau (colonne Stock) ; la photo avec la vignette 📷.', 'يُضبط المخزون في الجدول، والصورة عبر أيقونة 📷.')}</p>
+      <p className="mt-3 text-xs text-zinc-500">{t('La photo se change avec la vignette 📷 du tableau Stock.', 'تُغيَّر الصورة عبر أيقونة 📷 في جدول المخزون.')}</p>
       <div className="mt-5 flex flex-wrap justify-between gap-2"><Btn v="danger" onClick={archive}>{t('Retirer du catalogue', 'إزالة من الكتالوج')}</Btn><div className="flex gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn onClick={save}><Icon n="check" s={15} />{t('Enregistrer', 'حفظ')}</Btn></div></div>
     </Modal>
   );
@@ -763,16 +851,17 @@ function StockView({ readonly }) {
   const [delta, setDelta] = useState(10);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [openP, setOpenP] = useState({});
   const rows = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar + p.sku).toLowerCase().includes(q.toLowerCase())));
   const totalValue = db.products.reduce((s, p) => s + p.stock * p.cost, 0);
   const lowCount = db.products.filter(p => p.stock <= p.reorder).length;
   const selIds = Object.keys(sel).filter(k => sel[k]);
-  const setStock = (id, v) => act(() => must(sb.rpc('set_stock', { p_product_id: id, p_stock: Math.max(0, Math.floor(Number(v) || 0)) })), t('Stock mis à jour', 'تم تحديث المخزون'));
+  const setStock = (id, v) => act(() => must(sb.rpc('set_stock', { p_variant_id: id, p_stock: Math.max(0, Math.floor(Number(v) || 0)) })), t('Stock mis à jour', 'تم تحديث المخزون'));
   const batch = async sign => {
     const n = Math.floor(Number(delta) || 0);
-    const items = db.products.filter(p => sel[p.id]).map(p => ({ product_id: p.id, delta: Math.max(-p.stock, sign * n) })).filter(i => i.delta !== 0);
+    const items = db.products.filter(p => sel[p.id]).flatMap(p => p.variants.map(v => ({ variant_id: v.id, delta: Math.max(-v.stock, sign * n) }))).filter(i => i.delta !== 0);
     if (!items.length) { toast(t('Aucun changement à appliquer', 'لا توجد تغييرات'), 'err'); return; }
-    const done = await act(() => must(sb.rpc('adjust_stock', { p_items: items, p_note: 'Ajustement groupé' })), t(`${items.length} produit(s) mis à jour`, `تم تحديث ${items.length} منتج`));
+    const done = await act(() => must(sb.rpc('adjust_stock', { p_items: items, p_note: 'Ajustement groupé' })), t(`${items.length} variante(s) mises à jour`, `تم تحديث ${items.length} متغير`));
     if (done) setSel({});
   };
   const allOn = rows.length && rows.every(p => sel[p.id]);
@@ -794,7 +883,7 @@ function StockView({ readonly }) {
         </div>
         {!readonly && selIds.length > 0 && (
           <div className="fade-up flex flex-wrap items-center gap-2 bg-zinc-900 px-4 py-2.5 text-sm text-white">
-            <span className="font-medium">{selIds.length} {t('sélectionné(s)', 'محدد')}</span>
+            <span className="font-medium">{selIds.length} {t('sélectionné(s)', 'محدد')} <span className="text-xs font-normal text-white/60">· {t('appliqué à chaque variante', 'يُطبَّق على كل متغير')}</span></span>
             <div className="ms-auto flex items-center gap-2">
               <Input type="number" min="1" value={delta} onChange={e => setDelta(e.target.value)} className="w-20 bg-white text-zinc-900" />
               <Btn v="soft" onClick={() => batch(-1)} className="bg-white/10 text-white hover:bg-white/20"><Icon n="minus" s={14} />{t('Retirer', 'سحب')}</Btn>
@@ -811,16 +900,33 @@ function StockView({ readonly }) {
             </tr></thead>
             <tbody className="divide-y divide-zinc-100">
               {rows.map(p => (
-                <tr key={p.id} className="transition hover:bg-zinc-50">
+                <React.Fragment key={p.id}>
+                <tr className="transition hover:bg-zinc-50">
                   {!readonly && <td className="px-4 py-3"><input type="checkbox" checked={!!sel[p.id]} onChange={e => setSel({ ...sel, [p.id]: e.target.checked })} /></td>}
                   <td className="px-4 py-3 font-mono text-xs">{p.sku}</td>
                   <td className="px-4 py-3"><div className="flex items-center gap-2.5"><PhotoButton p={p} readonly={readonly} /><div>{readonly ? <div className="font-medium">{pn(p)}</div> : <button onClick={() => setEditing(p)} className="text-start font-medium hover:underline">{pn(p)}</button>}{readonly ? <div className="text-xs text-zinc-500">{[p.fabric, p.color, p.sizes].filter(Boolean).join(' · ') || '—'}</div> : <button onClick={() => setEditing(p)} title={t('Modifier tissu, couleur, tailles', 'تعديل القماش واللون والمقاسات')} className="text-start text-xs text-zinc-500 underline decoration-dotted hover:text-zinc-900">{[p.fabric, p.color, p.sizes].filter(Boolean).join(' · ') || t('+ couleur / tailles', '+ لون / مقاسات')}</button>}</div></div></td>
                   <td className="px-4 py-3 text-zinc-600">{lang === 'ar' ? CAT_AR[p.cat] : p.cat}</td>
-                  <td className="px-4 py-3">{readonly ? <span className="tabular font-semibold">{p.stock}</span> : <NumInput value={p.stock} onCommit={v => setStock(p.id, v)} className="tabular w-20 rounded-lg border border-zinc-200 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-zinc-900/10" />}</td>
+                  <td className="px-4 py-3">{p.variants.length > 1
+                    ? <button onClick={() => setOpenP({ ...openP, [p.id]: !openP[p.id] })} className="flex items-center gap-1.5 font-semibold"><span className="tabular">{p.stock}</span><span className="rounded-full bg-zinc-100 px-1.5 text-[10px] font-medium text-zinc-600">{p.variants.length} {t('variantes', 'متغيرات')} {openP[p.id] ? '▴' : '▾'}</span></button>
+                    : readonly || !p.variants[0] ? <span className="tabular font-semibold">{p.stock}</span>
+                    : <NumInput value={p.variants[0].stock} onCommit={v => setStock(p.variants[0].id, v)} className="tabular w-20 rounded-lg border border-zinc-200 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-zinc-900/10" />}</td>
                   <td className="tabular px-4 py-3 text-zinc-500">{p.reorder}</td>
                   <td className="tabular px-4 py-3">{money(p.stock * p.cost)}</td>
                   <td className="px-4 py-3"><StockBadge p={p} /></td>
                 </tr>
+                {p.variants.length > 1 && openP[p.id] && p.variants.map(v => (
+                  <tr key={v.id} className="bg-zinc-50/70">
+                    {!readonly && <td />}
+                    <td className="px-4 py-2 font-mono text-[11px] text-zinc-500">{v.sku}</td>
+                    <td className="px-4 py-2 ps-14 text-sm">{(() => { const c = v.color ? parseColor(v.color) : null; return <span className="inline-flex items-center gap-1.5">{c && <span className="inline-block h-3.5 w-3.5 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}{vLabel(v, lang) || t('Standard', 'قياسي')}</span>; })()}</td>
+                    <td />
+                    <td className="px-4 py-2">{readonly ? <span className="tabular font-semibold">{v.stock}</span> : <NumInput value={v.stock} onCommit={n => setStock(v.id, n)} className="tabular w-20 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-zinc-900/10" />}</td>
+                    <td />
+                    <td className="tabular px-4 py-2 text-zinc-500">{money(v.stock * p.cost)}</td>
+                    <td className="px-4 py-2">{v.stock === 0 && <Badge tone="red">{t('Rupture', 'نفاد')}</Badge>}</td>
+                  </tr>
+                ))}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -835,7 +941,7 @@ function StockView({ readonly }) {
 
 /* ───────────────────────── Achat ───────────────────────── */
 function ReceiveModal({ po, onClose }) {
-  const { db, act, toast, t, pn } = useApp();
+  const { db, act, toast, t, pn, lang } = useApp();
   const [q, setQ] = useState(() => po.lines.map(l => l.qty - l.received));
   const confirm = async () => {
     const items = po.lines.map((l, i) => ({ item_id: l.id, qty: Math.min(l.qty - l.received, Math.max(0, Math.floor(Number(q[i]) || 0))) })).filter(x => x.qty > 0);
@@ -851,7 +957,7 @@ function ReceiveModal({ po, onClose }) {
           const p = db.products.find(x => x.id === l.pid);
           return (
             <div key={i} className="flex items-center gap-3 rounded-xl border border-zinc-100 p-3">
-              <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{p ? pn(p) : l.pid}</div><div className="text-xs text-zinc-500">{t('Reçu', 'مستلم')} {l.received} / {l.qty}</div></div>
+              <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{p ? pn(p) + (vLabelOf(p, l.vid, lang) ? ' · ' + vLabelOf(p, l.vid, lang) : '') : l.pid}</div><div className="text-xs text-zinc-500">{t('Reçu', 'مستلم')} {l.received} / {l.qty}</div></div>
               <Input type="number" min="0" max={l.qty - l.received} value={q[i]} onChange={e => setQ(q.map((v, k) => k === i ? e.target.value : v))} className="w-24" />
             </div>
           );
@@ -866,24 +972,24 @@ function Achats() {
   const [supId, setSupId] = useState(db.suppliers[0]?.id || '');
   const [expected, setExpected] = useState(addDays(5));
   const [lines, setLines] = useState([]);
-  const [pick, setPick] = useState(db.products[0]?.id || '');
+  const [pick, setPick] = useState((db.products[0]?.variants[0] || {}).id || '');
   const [pq, setPq] = useState(10);
   const [recv, setRecv] = useState(null);
   const supName = id => db.suppliers.find(s => s.id === id)?.name || '—';
   const lineTotal = l => l.qty * l.cost;
   const addLine = () => {
-    const p = db.products.find(x => x.id === pick);
+    const p = db.products.find(x => x.variants.some(v => v.id === pick));
     if (!p) return;
-    setLines(l => [...l, { pid: p.id, qty: Math.max(1, Number(pq) || 1), cost: p.cost }]);
+    setLines(l => [...l, { pid: p.id, vid: pick, qty: Math.max(1, Number(pq) || 1), cost: p.cost }]);
   };
   const createPO = async status => {
     if (!lines.length) { toast(t('Ajoutez au moins une ligne', 'أضف سطراً واحداً على الأقل'), 'err'); return; }
     if (!supId) { toast(t('Choisissez un fournisseur', 'اختر موردا'), 'err'); return; }
-    const done = await act(() => must(sb.rpc('create_purchase_order', { p_supplier_id: supId, p_expected: expected || null, p_items: lines.map(l => ({ product_id: l.pid, qty: l.qty, unit_cost: l.cost })), p_send: status !== 'Brouillon' })),
+    const done = await act(() => must(sb.rpc('create_purchase_order', { p_supplier_id: supId, p_expected: expected || null, p_items: lines.map(l => ({ variant_id: l.vid, qty: l.qty, unit_cost: l.cost })), p_send: status !== 'Brouillon' })),
       status === 'Brouillon' ? t('Brouillon enregistré', 'تم حفظ المسودة') : t('Bon de commande envoyé au fournisseur', 'تم إرسال طلب الشراء إلى المورد'));
     if (done) setLines([]);
   };
-  const createRestock = (supplierId, items) => act(() => must(sb.rpc('create_purchase_order', { p_supplier_id: supplierId, p_expected: null, p_items: items.map(p => ({ product_id: p.id, qty: Math.max(p.reorder * 2 - p.stock, p.reorder), unit_cost: p.cost })), p_send: false })), t('Brouillon de réassort créé', 'تم إنشاء مسودة إعادة التخزين'));
+  const createRestock = (supplierId, items) => act(() => must(sb.rpc('create_purchase_order', { p_supplier_id: supplierId, p_expected: null, p_items: items.flatMap(p => { const per = Math.ceil(Math.max(p.reorder * 2 - p.stock, p.reorder) / Math.max(1, p.variants.length)); return p.variants.map(v => ({ variant_id: v.id, qty: per, unit_cost: p.cost })); }), p_send: false })), t('Brouillon de réassort créé', 'تم إنشاء مسودة إعادة التخزين'));
   const send = id => act(() => must(sb.rpc('set_po_status', { p_po_id: id, p_status: 'envoyee' })), t('Bon de commande envoyé au fournisseur', 'تم إرسال طلب الشراء إلى المورد'));
   const low = db.products.filter(p => p.stock <= p.reorder);
   const groups = db.suppliers.map(s => ({ s, items: low.filter(p => p.sup === s.id) })).filter(g => g.items.length);
@@ -915,14 +1021,14 @@ function Achats() {
         <div className="grid gap-3 md:grid-cols-4">
           <Field label={t('Fournisseur', 'المورد')}><Select value={supId} onChange={e => setSupId(e.target.value)}>{db.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
           <Field label={t('Livraison prévue', 'التسليم المتوقع')}><Input type="date" value={expected} onChange={e => setExpected(e.target.value)} /></Field>
-          <Field label={t('Produit', 'المنتج')}><Select value={pick} onChange={e => setPick(e.target.value)}>{db.products.map(p => <option key={p.id} value={p.id}>{p.name} ({p.sku})</option>)}</Select></Field>
+          <Field label={t('Produit / variante', 'المنتج / المتغير')}><Select value={pick} onChange={e => setPick(e.target.value)}>{db.products.flatMap(p => p.variants.map(v => <option key={v.id} value={v.id}>{p.name}{vLabel(v, 'fr') ? ' — ' + vLabel(v, 'fr') : ''} ({v.sku})</option>))}</Select></Field>
           <div className="flex items-end gap-2"><Field label={t('Quantité', 'الكمية')}><Input type="number" min="1" value={pq} onChange={e => setPq(e.target.value)} /></Field><Btn v="soft" onClick={addLine} className="mb-px"><Icon n="plus" s={14} />{t('Ligne', 'سطر')}</Btn></div>
         </div>
         {lines.length > 0 && (
           <div className="mt-4 divide-y divide-zinc-100 rounded-xl border border-zinc-100">
             {lines.map((l, i) => { const p = db.products.find(x => x.id === l.pid); return (
               <div key={i} className="flex items-center gap-3 px-3 py-2 text-sm">
-                <span className="flex-1 truncate">{p && pn(p)}</span>
+                <span className="flex-1 truncate">{p && pn(p)}{vLabelOf(p, l.vid, lang) ? ' · ' + vLabelOf(p, l.vid, lang) : ''}</span>
                 <span className="tabular text-zinc-500">{l.qty} × {money(l.cost)}</span>
                 <span className="tabular w-28 text-end font-semibold">{money(lineTotal(l))}</span>
                 <button onClick={() => setLines(lines.filter((_, k) => k !== i))} className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-100 hover:text-rose-600"><Icon n="trash" s={14} /></button>
@@ -1243,12 +1349,17 @@ function POS() {
   const [code, setCode] = useState('');
   const [usePts, setUsePts] = useState(0);
   const products = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar + p.sku).toLowerCase().includes(q.toLowerCase())));
-  const add = p => {
-    if (p.stock <= 0) return;
-    const e = cart.find(x => x.pid === p.id);
-    setCart(e ? cart.map(x => x.pid === p.id ? { ...x, qty: Math.min(p.stock, x.qty + 1) } : x) : [...cart, { pid: p.id, qty: 1 }]);
+  const [picking, setPicking] = useState(null);
+  const addV = (p, v) => {
+    if (v.stock <= 0) return;
+    const e = cart.find(x => x.vid === v.id);
+    setCart(e ? cart.map(x => x.vid === v.id ? { ...x, qty: Math.min(v.stock, x.qty + 1) } : x) : [...cart, { pid: p.id, vid: v.id, qty: 1 }]);
   };
-  const setQty = (pid, n) => setCart(cart.map(x => x.pid === pid ? { ...x, qty: n } : x).filter(x => x.qty > 0));
+  const add = p => {
+    if (p.stock <= 0 || !p.variants.length) return;
+    if (p.variants.length === 1) addV(p, p.variants[0]); else setPicking(p);
+  };
+  const setQty = (vid, n) => setCart(cart.map(x => x.vid === vid ? { ...x, qty: n } : x).filter(x => x.qty > 0));
   const qt = quote({ cart, clientId: clientId || null, code, usePts: Number(usePts) || 0 });
   const client = qt.client;
   const finish = async () => {
@@ -1257,6 +1368,7 @@ function POS() {
   };
   return (
     <div className="grid gap-4 xl:grid-cols-5">
+      {picking && <VariantPicker p={picking} onPick={v => { addV(picking, v); setPicking(null); }} onClose={() => setPicking(null)} />}
       <div className="xl:col-span-3">
         <PageTitle title={t('Vente · Caisse', 'البيع · الصندوق')} sub={t('Encaissement rapide, stock déduit automatiquement', 'تسجيل سريع، والمخزون يُخصم تلقائياً')} />
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -1277,13 +1389,13 @@ function POS() {
         <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">{t('Panier', 'السلة')}</h2><span className="text-xs text-zinc-500">{cart.length} {t('article(s)', 'قطعة')}</span></div>
         <div className="max-h-64 space-y-2 overflow-auto pe-1">
           {cart.length === 0 && <div className="py-8 text-center text-sm text-zinc-400">{t('Touchez un produit pour l’ajouter', 'انقر على منتج لإضافته')}</div>}
-          {cart.map(l => { const p = db.products.find(x => x.id === l.pid); return (
-            <div key={l.pid} className="fade-up flex items-center gap-2 rounded-xl bg-zinc-50 p-2">
-              <span className="text-lg">{p.emoji}</span>
-              <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{pn(p)}</div><div className="tabular text-xs text-zinc-500">{money(p.price)}</div></div>
-              <button onClick={() => setQty(l.pid, l.qty - 1)} className="grid h-7 w-7 place-items-center rounded-lg bg-white border border-zinc-200"><Icon n="minus" s={12} /></button>
+          {cart.map(l => { const p = db.products.find(x => x.id === l.pid); const v = p && p.variants.find(x => x.id === l.vid); if (!v) return null; return (
+            <div key={l.vid} className="fade-up flex items-center gap-2 rounded-xl bg-zinc-50 p-2">
+              <Thumb p={p} cls="h-9 w-9 rounded-lg" txt="text-lg" />
+              <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{pn(p)}</div><div className="tabular text-xs text-zinc-500">{vLabel(v, lang) && <span className="me-1.5 rounded bg-white px-1 ring-1 ring-zinc-200">{vLabel(v, lang)}</span>}{money(v.price)}</div></div>
+              <button onClick={() => setQty(v.id, l.qty - 1)} className="grid h-7 w-7 place-items-center rounded-lg bg-white border border-zinc-200"><Icon n="minus" s={12} /></button>
               <span className="tabular w-6 text-center text-sm font-semibold">{l.qty}</span>
-              <button onClick={() => setQty(l.pid, Math.min(p.stock, l.qty + 1))} className="grid h-7 w-7 place-items-center rounded-lg bg-white border border-zinc-200"><Icon n="plus" s={12} /></button>
+              <button onClick={() => setQty(v.id, Math.min(v.stock, l.qty + 1))} className="grid h-7 w-7 place-items-center rounded-lg bg-white border border-zinc-200"><Icon n="plus" s={12} /></button>
             </div>); })}
         </div>
         <div className="mt-4 space-y-3">
@@ -1341,14 +1453,19 @@ function Storefront() {
   let list = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar).toLowerCase().includes(q.toLowerCase())));
   if (sort === 'asc') list = [...list].sort((a, b) => a.price - b.price);
   if (sort === 'desc') list = [...list].sort((a, b) => b.price - a.price);
-  const add = p => {
-    if (p.stock <= 0) return;
-    const e = cart.find(x => x.pid === p.id);
-    if (e && e.qty >= p.stock) { toast(t('Stock maximum atteint', 'تم بلوغ الحد الأقصى'), 'err'); return; }
-    setCart(e ? cart.map(x => x.pid === p.id ? { ...x, qty: x.qty + 1 } : x) : [...cart, { pid: p.id, qty: 1 }]);
+  const [picking, setPicking] = useState(null);
+  const addV = (p, v) => {
+    if (v.stock <= 0) return;
+    const e = cart.find(x => x.vid === v.id);
+    if (e && e.qty >= v.stock) { toast(t('Stock maximum atteint', 'تم بلوغ الحد الأقصى'), 'err'); return; }
+    setCart(e ? cart.map(x => x.vid === v.id ? { ...x, qty: x.qty + 1 } : x) : [...cart, { pid: p.id, vid: v.id, qty: 1 }]);
     toast(t(`${pn(p)} ajouté au panier`, `تمت إضافة ${pn(p)} إلى السلة`));
   };
-  const setQty = (pid, n) => setCart(cart.filter(x => x.pid !== pid || n > 0).map(x => x.pid === pid ? { ...x, qty: n } : x));
+  const add = p => {
+    if (p.stock <= 0 || !p.variants.length) return;
+    if (p.variants.length === 1) addV(p, p.variants[0]); else setPicking(p);
+  };
+  const setQty = (vid, n) => setCart(cart.filter(x => x.vid !== vid || n > 0).map(x => x.vid === vid ? { ...x, qty: n } : x));
   const qt = quote({ cart, clientId: clientId || null, code, usePts: Number(usePts) || 0 });
   const client = qt.client;
   const count = cart.reduce((s, x) => s + x.qty, 0);
@@ -1359,6 +1476,7 @@ function Storefront() {
   };
   return (
     <div>
+      {picking && <VariantPicker p={picking} onPick={v => { addV(picking, v); setPicking(null); }} onClose={() => setPicking(null)} />}
       <div className="mb-5 overflow-hidden rounded-3xl bg-zinc-900 p-6 text-white md:p-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -1414,14 +1532,14 @@ function Storefront() {
             <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4"><h2 className="font-semibold">{t('Votre panier', 'سلتك')}</h2><button onClick={() => setOpen(false)} className="rounded-lg p-1 hover:bg-zinc-100"><Icon n="x" /></button></div>
             <div className="flex-1 space-y-3 overflow-auto p-5">
               {cart.length === 0 && <div className="py-12 text-center text-sm text-zinc-400">{t('Votre panier est vide', 'السلة فارغة')}</div>}
-              {cart.map(l => { const p = db.products.find(x => x.id === l.pid); return (
-                <div key={l.pid} className="flex items-center gap-3 rounded-xl border border-zinc-100 p-3">
+              {cart.map(l => { const p = db.products.find(x => x.id === l.pid); const v = p && p.variants.find(x => x.id === l.vid); if (!v) return null; return (
+                <div key={l.vid} className="flex items-center gap-3 rounded-xl border border-zinc-100 p-3">
                   <Thumb p={p} cls="h-12 w-12 rounded-lg" txt="text-2xl" />
-                  <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{pn(p)}</div><div className="tabular text-xs text-zinc-500">{money(p.price * l.qty)}</div></div>
+                  <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{pn(p)}</div>{vLabel(v, lang) && <div className="text-xs text-zinc-500">{vLabel(v, lang)}</div>}<div className="tabular text-xs text-zinc-500">{money(v.price * l.qty)}</div></div>
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => setQty(l.pid, l.qty - 1)} className="grid h-7 w-7 place-items-center rounded-lg border border-zinc-200"><Icon n="minus" s={12} /></button>
+                    <button onClick={() => setQty(v.id, l.qty - 1)} className="grid h-7 w-7 place-items-center rounded-lg border border-zinc-200"><Icon n="minus" s={12} /></button>
                     <span className="tabular w-6 text-center text-sm">{l.qty}</span>
-                    <button onClick={() => l.qty < p.stock && setQty(l.pid, l.qty + 1)} className="grid h-7 w-7 place-items-center rounded-lg border border-zinc-200"><Icon n="plus" s={12} /></button>
+                    <button onClick={() => l.qty < v.stock && setQty(v.id, l.qty + 1)} className="grid h-7 w-7 place-items-center rounded-lg border border-zinc-200"><Icon n="plus" s={12} /></button>
                   </div>
                 </div>); })}
               {cart.length > 0 && (
@@ -1500,7 +1618,7 @@ function MesPoints() {
 
 /* ───────────────────────── Portail fournisseur ───────────────────────── */
 function Fournisseur({ mode }) {
-  const { db, act, t, pn, money, toast, supplierId } = useApp();
+  const { db, act, t, pn, money, toast, supplierId, lang } = useApp();
   const sup = db.suppliers.find(s => s.id === supplierId) || db.suppliers[0];
   if (!sup) return <Card className="p-8 text-center text-sm text-zinc-500">{t('Ce compte n’est lié à aucun fournisseur. Demandez à l’administrateur de le rattacher.', 'هذا الحساب غير مرتبط بأي مورد. اطلب من المدير ربطه.')}</Card>;
   const pos = db.purchases.filter(p => p.supplierId === sup.id && p.status !== 'Brouillon');
@@ -1522,7 +1640,7 @@ function Fournisseur({ mode }) {
               <div className="my-5"><Timeline status={po.status} /></div>
               <div className="divide-y divide-zinc-100 rounded-xl border border-zinc-100 text-sm">
                 {po.lines.map((l, i) => { const p = db.products.find(x => x.id === l.pid); return (
-                  <div key={i} className="flex items-center gap-3 px-3 py-2"><span>{p && p.emoji}</span><span className="flex-1 truncate">{p && pn(p)}</span><span className="tabular text-zinc-500">{l.received}/{l.qty}</span><span className="tabular w-24 text-end">{money(l.qty * l.cost)}</span></div>); })}
+                  <div key={i} className="flex items-center gap-3 px-3 py-2"><span>{p && p.emoji}</span><span className="flex-1 truncate">{p && pn(p)}{vLabelOf(p, l.vid, lang) ? ' · ' + vLabelOf(p, l.vid, lang) : ''}</span><span className="tabular text-zinc-500">{l.received}/{l.qty}</span><span className="tabular w-24 text-end">{money(l.qty * l.cost)}</span></div>); })}
               </div>
               <div className="mt-4 flex flex-wrap justify-end gap-2">
                 {po.status === 'Envoyée' && <Btn onClick={() => advance(po.id, 'Envoyée', 'Confirmée')}><Icon n="check" s={14} />{t('Confirmer la commande', 'تأكيد الطلب')}</Btn>}
@@ -1696,7 +1814,7 @@ function Shell({ session, lang, setLang }) {
     if (q.error) { toast(q.error, 'err'); return null; }
     setBusy(true);
     try {
-      const row = await must(sb.rpc('create_sale', { p_channel: args.channel === 'Web' ? 'web' : 'pos', p_client_id: args.clientId || null, p_items: q.lines.map(l => ({ product_id: l.pid, qty: l.qty })), p_voucher_code: args.code ? args.code.trim() : null, p_points_used: q.pointsUsed }));
+      const row = await must(sb.rpc('create_sale', { p_channel: args.channel === 'Web' ? 'web' : 'pos', p_client_id: args.clientId || null, p_items: q.lines.map(l => ({ variant_id: l.vid, qty: l.qty })), p_voucher_code: args.code ? args.code.trim() : null, p_points_used: q.pointsUsed }));
       const d = await reload();
       const sale = d.sales.find(x => x.id === row.id) || null;
       toast(t(`Vente ${row.ref} encaissée`, `تم تسجيل البيع ${row.ref}`));
