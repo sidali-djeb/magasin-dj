@@ -182,12 +182,12 @@ async function uploadProductImage(file, pid) {
 const Thumb = ({ p, cls = '', txt = 'text-2xl' }) => p.img
   ? <img src={p.img} alt="" loading="lazy" className={`object-cover ${cls}`} />
   : <span className={`grid place-items-center ${cls} ${p.bg} ${txt}`}>{p.emoji}</span>;
-function PhotoButton({ p, readonly }) {
+function PhotoButton({ p, readonly, size = 'h-10 w-10', txt = 'text-base' }) {
   const { act, t } = useApp();
-  if (readonly) return <Thumb p={p} cls="h-10 w-10 rounded-lg" txt="text-base" />;
+  if (readonly) return <Thumb p={p} cls={`${size} rounded-lg`} txt={txt} />;
   return (
-    <label title={t('Changer la photo', 'تغيير الصورة')} className="relative block h-10 w-10 shrink-0 cursor-pointer overflow-hidden rounded-lg ring-1 ring-zinc-200 hover:ring-zinc-900">
-      <Thumb p={p} cls="h-10 w-10" txt="text-base" />
+    <label title={t('Changer la photo', 'تغيير الصورة')} className={`relative block ${size} shrink-0 cursor-pointer overflow-hidden rounded-lg ring-1 ring-zinc-200 hover:ring-zinc-900`}>
+      <Thumb p={p} cls={size} txt={txt} />
       <span className="absolute inset-x-0 bottom-0 bg-black/55 text-center text-[9px] leading-4 text-white">📷</span>
       <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) act(() => uploadProductImage(f, p.id), t('Photo enregistrée', 'تم حفظ الصورة')); }} />
     </label>
@@ -816,7 +816,7 @@ function AddProductModal({ onClose }) {
   };
   return (
     <Modal title={t('Nouveau produit', 'منتج جديد')} onClose={onClose} wide>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3">
         <Field label={t('Nom', 'الاسم')}><Input value={f.name} onChange={e => set('name', e.target.value)} /></Field>
         <Field label={t('Nom (arabe)', 'الاسم بالعربية')}><Input value={f.ar} onChange={e => set('ar', e.target.value)} dir="rtl" /></Field>
         <Field label="SKU"><Input value={f.sku} onChange={e => set('sku', e.target.value)} placeholder="ABC-013" /></Field>
@@ -858,7 +858,7 @@ function EditProductModal({ p, onClose }) {
   };
   return (
     <Modal title={`${t('Modifier', 'تعديل')} · ${p.name}`} onClose={onClose} wide>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3">
         <Field label={t('Nom', 'الاسم')}><Input value={f.name} onChange={e => set('name', e.target.value)} /></Field>
         <Field label={t('Nom (arabe)', 'الاسم بالعربية')}><Input value={f.ar} onChange={e => set('ar', e.target.value)} dir="rtl" /></Field>
         <Field label="SKU"><Input value={f.sku} onChange={e => set('sku', e.target.value)} /></Field>
@@ -923,6 +923,7 @@ function StockView({ readonly }) {
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 p-3">
           <div className="relative min-w-48 flex-1"><Icon n="search" s={15} className="absolute start-3 top-2.5 text-zinc-400" /><Input value={q} onChange={e => setQ(e.target.value)} placeholder={t('Rechercher nom ou SKU…', 'ابحث بالاسم أو الرمز…')} className="ps-9" /></div>
+          {!readonly && <label className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-600"><input type="checkbox" checked={!!allOn} onChange={e => { const n = {}; if (e.target.checked) rows.forEach(p => n[p.id] = true); setSel(n); }} />{t('Tout', 'الكل')}</label>}
           <div className="flex flex-wrap gap-1.5">
             {['Toutes', ...CATS].map(c => <button key={c} onClick={() => setCat(c)} className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${cat === c ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{lang === 'ar' ? CAT_AR[c] : c}</button>)}
           </div>
@@ -938,51 +939,48 @@ function StockView({ readonly }) {
             </div>
           </div>
         )}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500"><tr>
-              {!readonly && <th className="w-10 px-4 py-3"><input type="checkbox" checked={!!allOn} onChange={e => { const n = {}; if (e.target.checked) rows.forEach(p => n[p.id] = true); setSel(n); }} /></th>}
-              {[t('SKU', 'الرمز'), t('Produit', 'المنتج'), t('Catégorie', 'الفئة'), t('Stock', 'المخزون'), t('Seuil', 'الحد'), t('Valeur', 'القيمة'), t('Statut', 'الحالة'), ...(readonly ? [] : [''])].map((h, i) => <th key={i} className="px-4 py-3 text-start font-semibold">{h}</th>)}
-            </tr></thead>
-            <tbody className="divide-y divide-zinc-100">
-              {rows.map(p => (
-                <React.Fragment key={p.id}>
-                <tr className="transition hover:bg-zinc-50">
-                  {!readonly && <td className="px-4 py-3"><input type="checkbox" checked={!!sel[p.id]} onChange={e => setSel({ ...sel, [p.id]: e.target.checked })} /></td>}
-                  <td className="px-4 py-3 font-mono text-xs">{p.sku}</td>
-                  <td className="px-4 py-3"><div className="flex items-center gap-2.5"><PhotoButton p={p} readonly={readonly} /><div>{readonly ? <div className="font-medium">{pn(p)}</div> : <button onClick={() => setEditing(p)} className="text-start font-medium hover:underline">{pn(p)}</button>}{readonly ? <div className="text-xs text-zinc-500">{[p.fabric, p.color, p.sizes].filter(Boolean).join(' · ') || '—'}</div> : <button onClick={() => setEditing(p)} title={t('Modifier tissu, couleur, tailles', 'تعديل القماش واللون والمقاسات')} className="text-start text-xs text-zinc-500 underline decoration-dotted hover:text-zinc-900">{[p.fabric, p.color, p.sizes].filter(Boolean).join(' · ') || t('+ couleur / tailles', '+ لون / مقاسات')}</button>}</div></div></td>
-                  <td className="px-4 py-3 text-zinc-600">{lang === 'ar' ? CAT_AR[p.cat] : p.cat}</td>
-                  <td className="px-4 py-3">{p.variants.length > 1
-                    ? <button onClick={() => setOpenP({ ...openP, [p.id]: !openP[p.id] })} className="flex items-center gap-1.5 font-semibold"><span className="tabular">{p.stock}</span><span className="rounded-full bg-zinc-100 px-1.5 text-[10px] font-medium text-zinc-600">{p.variants.length} {t('variantes', 'متغيرات')} {openP[p.id] ? '▴' : '▾'}</span></button>
-                    : readonly || !p.variants[0] ? <span className="tabular font-semibold">{p.stock}</span>
-                    : <NumInput value={p.variants[0].stock} onCommit={v => setStock(p.variants[0].id, v)} className="tabular w-20 rounded-lg border border-zinc-200 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-zinc-900/10" />}</td>
-                  <td className="tabular px-4 py-3 text-zinc-500">{p.reorder}</td>
-                  <td className="tabular px-4 py-3">{money(p.stock * p.cost)}</td>
-                  <td className="px-4 py-3"><StockBadge p={p} /></td>
-                  {!readonly && <td className="px-4 py-3"><div className="flex justify-end gap-1">
-                    <button onClick={() => setEditing(p)} title={t('Modifier', 'تعديل')} className="rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="edit" s={14} /></button>
-                    <button onClick={() => dupProduct(p)} title={t('Dupliquer', 'نسخ')} className="rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="copy" s={14} /></button>
-                    <button onClick={() => delProduct(p)} title={t('Supprimer', 'حذف')} className="rounded-lg border border-zinc-200 p-1.5 text-rose-600 hover:bg-rose-50"><Icon n="trash" s={14} /></button>
-                  </div></td>}
-                </tr>
-                {p.variants.length > 1 && openP[p.id] && p.variants.map(v => (
-                  <tr key={v.id} className="bg-zinc-50/70">
-                    {!readonly && <td />}
-                    <td className="px-4 py-2 font-mono text-[11px] text-zinc-500">{v.sku}</td>
-                    <td className="px-4 py-2 ps-14 text-sm">{(() => { const c = v.color ? parseColor(v.color) : null; return <span className="inline-flex items-center gap-1.5">{c && <span className="inline-block h-3.5 w-3.5 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}{vLabel(v, lang) || t('Standard', 'قياسي')}</span>; })()}</td>
-                    <td />
-                    <td className="px-4 py-2">{readonly ? <span className="tabular font-semibold">{v.stock}</span> : <NumInput value={v.stock} onCommit={n => setStock(v.id, n)} className="tabular w-20 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-zinc-900/10" />}</td>
-                    <td />
-                    <td className="tabular px-4 py-2 text-zinc-500">{money(v.stock * p.cost)}</td>
-                    <td className="px-4 py-2">{v.stock === 0 && <Badge tone="red">{t('Rupture', 'نفاد')}</Badge>}</td>
-                  </tr>
-                ))}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-          {rows.length === 0 && <div className="p-8 text-center text-sm text-zinc-500">{t('Aucun produit', 'لا توجد منتجات')}</div>}
+        <div className="grid grid-cols-2 gap-3 p-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {rows.map(p => (
+            <div key={p.id} className={`flex flex-col rounded-2xl border bg-white p-2.5 transition hover:shadow-md ${sel[p.id] ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-200'}`}>
+              <div className="relative">
+                <PhotoButton p={p} readonly={readonly} size="h-24 w-full" txt="text-4xl" />
+                {!readonly && <input type="checkbox" checked={!!sel[p.id]} onChange={e => setSel({ ...sel, [p.id]: e.target.checked })} className="absolute start-2 top-2 h-4 w-4" />}
+                <div className="pointer-events-none absolute end-1.5 top-1.5"><StockBadge p={p} /></div>
+              </div>
+              <div className="mt-2 min-w-0">
+                {readonly ? <div className="truncate text-sm font-semibold">{pn(p)}</div> : <button onClick={() => setEditing(p)} className="block w-full truncate text-start text-sm font-semibold hover:underline">{pn(p)}</button>}
+                <div className="flex items-center justify-between text-[11px] text-zinc-500"><span className="truncate font-mono">{p.sku}</span><span>{lang === 'ar' ? CAT_AR[p.cat] : p.cat}</span></div>
+              </div>
+              <div className="mt-2 flex items-end justify-between">
+                <div><div className="text-[10px] uppercase tracking-wide text-zinc-400">{t('Stock', 'المخزون')}</div>
+                  {p.variants.length <= 1 && !readonly && p.variants[0]
+                    ? <NumInput value={p.variants[0].stock} onCommit={v => setStock(p.variants[0].id, v)} className="tabular w-16 rounded-lg border border-zinc-200 px-1.5 py-0.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-zinc-900/10" />
+                    : <div className="tabular text-lg font-bold leading-tight">{p.stock}</div>}
+                </div>
+                <div className="text-end"><div className="text-[10px] uppercase tracking-wide text-zinc-400">{t('Valeur', 'القيمة')}</div><div className="tabular text-xs font-medium">{money(p.stock * p.cost)}</div></div>
+              </div>
+              {p.variants.length > 1 && (
+                <button onClick={() => setOpenP({ ...openP, [p.id]: !openP[p.id] })} className="mt-2 flex w-full items-center justify-between rounded-lg bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-200"><span>{p.variants.length} {t('variantes', 'متغيرات')}</span><span>{openP[p.id] ? '▴' : '▾'}</span></button>
+              )}
+              {p.variants.length > 1 && openP[p.id] && (
+                <div className="mt-1.5 max-h-56 space-y-1 overflow-auto pe-0.5">
+                  {p.variants.map(v => { const c = v.color ? parseColor(v.color) : null; return (
+                    <div key={v.id} className="flex items-center gap-1.5 rounded-lg bg-zinc-50 px-1.5 py-1 text-xs">
+                      {c && <span className="inline-block h-3 w-3 shrink-0 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}
+                      <span className="min-w-0 flex-1 truncate">{vLabel(v, lang) || t('Standard', 'قياسي')}</span>
+                      {readonly ? <span className="tabular font-semibold">{v.stock}</span> : <NumInput value={v.stock} onCommit={n => setStock(v.id, n)} className="tabular w-14 rounded-md border border-zinc-200 bg-white px-1 py-0.5 text-center text-xs outline-none focus:ring-2 focus:ring-zinc-900/10" />}
+                    </div>); })}
+                </div>
+              )}
+              {!readonly && <div className="mt-2 flex gap-1 border-t border-zinc-100 pt-2">
+                <button onClick={() => setEditing(p)} title={t('Modifier', 'تعديل')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="edit" s={14} /></button>
+                <button onClick={() => dupProduct(p)} title={t('Dupliquer', 'نسخ')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="copy" s={14} /></button>
+                <button onClick={() => delProduct(p)} title={t('Supprimer', 'حذف')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-rose-600 hover:bg-rose-50"><Icon n="trash" s={14} /></button>
+              </div>}
+            </div>
+          ))}
         </div>
+        {rows.length === 0 && <div className="p-8 text-center text-sm text-zinc-500">{t('Aucun produit', 'لا توجد منتجات')}</div>}
       </Card>
       {adding && <AddProductModal onClose={() => setAdding(false)} />}
       {editing && <EditProductModal p={editing} onClose={() => setEditing(null)} />}
