@@ -103,7 +103,8 @@ const errText = (e, t) => {
   const m = String((e && (e.message || e.details)) || e);
   const k = Object.keys(ERR).find(x => m.includes(x));
   if (k) return t(ERR[k][0], ERR[k][1]);
-  if (/foreign key|violates/i.test(m)) return t('Suppression impossible : cet élément est utilisé ailleurs (commandes, ventes…). Désactivez-le plutôt.', 'لا يمكن الحذف: العنصر مستخدم في مكان آخر. عطّله بدلاً من ذلك.');
+  if (/duplicate key|unique constraint/i.test(m)) return t('Un SKU (ou une combinaison couleur/taille) est déjà utilisé par une autre variante ou un autre produit. Changez le SKU.', 'الرمز (SKU) مستخدم بالفعل في متغير أو منتج آخر. غيّر الرمز.');
+  if (/foreign key/i.test(m)) return t('Suppression impossible : cet élément est utilisé ailleurs (commandes, ventes…). Désactivez-le plutôt.', 'لا يمكن الحذف: العنصر مستخدم في مكان آخر. عطّله بدلاً من ذلك.');
   if (/duplicate key/i.test(m)) return t('Cette valeur existe déjà', 'هذه القيمة موجودة بالفعل');
   if (/row-level security|permission denied/i.test(m)) return t('Action non autorisée pour votre rôle', 'إجراء غير مسموح لدورك');
   if (/Failed to fetch|NetworkError/i.test(m)) return t('Connexion au serveur impossible', 'تعذر الاتصال بالخادم');
@@ -349,7 +350,7 @@ function SizePicker({ value, onChange }) {
 const vLabel = (v, lang) => { const c = v.color ? parseColor(v.color) : null; const col = c ? (lang === 'ar' && c.ar ? c.ar : c.label) : ''; return [col, v.size].filter(Boolean).join(' / '); };
 const vLabelOf = (p, vid, lang) => { const v = p && p.variants.find(x => x.id === vid); return v ? vLabel(v, lang) : ''; };
 const autoSku = (base, color, size) => [String(base || '').trim(), color && parseColor(color).label.replace(/[^A-Za-z0-9]/g, '').slice(0, 4), size && String(size).replace(/\s+/g, '')].filter(Boolean).join('-').toUpperCase();
-const packVariants = (list, baseSku) => list.map(v => ({ id: v.id || null, color: v.color || null, size: v.size || null, sku: (v.sku && v.sku.trim() ? v.sku : autoSku(baseSku, v.color, v.size)).toUpperCase(), price: v.price === '' || v.price === null || v.price === undefined ? null : +v.price, stock: Math.max(0, Math.floor(+v.stock) || 0) }));
+const packVariants = (list, baseSku) => { const used = new Set(); return list.map(v => ({ id: v.id || null, color: v.color || null, size: v.size || null, sku: (v.sku && v.sku.trim() ? v.sku : autoSku(baseSku, v.color, v.size)).toUpperCase(), price: v.price === '' || v.price === null || v.price === undefined ? null : +v.price, stock: Math.max(0, Math.floor(+v.stock) || 0) })).map(v => { let k = v.sku, n = 2; while (used.has(k)) k = `${v.sku}-${n++}`; used.add(k); return { ...v, sku: k }; }); };
 
 function VariantEditor({ baseSku, variants, setVariants }) {
   const { t, lang } = useApp();
