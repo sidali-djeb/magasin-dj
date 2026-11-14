@@ -1382,6 +1382,37 @@ function Bons() {
 /* ───────────────────────── Caisse (Vendeur) ───────────────────────── */
 let DZ_PROMISE = null;
 const loadDZ = () => DZ_PROMISE || (DZ_PROMISE = fetch('https://cdn.jsdelivr.net/npm/geoalgeria/data/ecommerce/communes.json').then(r => { if (!r.ok) throw new Error('dz'); return r.json(); }).catch(e => { DZ_PROMISE = null; throw e; }));
+function ClientSearch({ value, onChange }) {
+  const { db, t } = useApp();
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const sel = db.clients.find(c => c.id === value);
+  const norm = x => String(x || '').toLowerCase();
+  const hits = db.clients.filter(c => !q || norm(c.name + ' ' + c.phone + ' ' + c.email).includes(norm(q))).slice(0, 8);
+  if (sel) return (
+    <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm">
+      <span className="min-w-0 flex-1 truncate font-medium">{sel.name}<span className="ms-2 text-xs font-normal text-violet-700">{fmtNum(sel.pts)} pts</span></span>
+      <button type="button" onClick={() => { onChange(''); setQ(''); }} className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700" aria-label="Retirer"><Icon n="x" s={14} /></button>
+    </div>
+  );
+  return (
+    <div className="relative">
+      <Icon n="search" s={15} className="absolute start-3 top-2.5 text-zinc-400" />
+      <Input value={q} onChange={e => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)} placeholder={t('Client de passage — rechercher nom / tél…', 'زبون عابر — ابحث بالاسم / الهاتف…')} className="ps-9" />
+      {open && (
+        <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-zinc-200 bg-white p-1 shadow-lg">
+          {hits.length === 0 && <div className="px-3 py-2 text-xs text-zinc-400">{t('Aucun client', 'لا يوجد زبون')}</div>}
+          {hits.map(c => (
+            <button type="button" key={c.id} onMouseDown={e => e.preventDefault()} onClick={() => { onChange(c.id); setQ(''); setOpen(false); }} className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-start text-sm hover:bg-zinc-100">
+              <span className="min-w-0"><span className="block truncate font-medium">{c.name}</span><span className="block truncate text-xs text-zinc-500" dir="ltr">{c.phone || c.email || '—'}</span></span>
+              <span className="tabular shrink-0 text-xs text-violet-700">{fmtNum(c.pts)} pts</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 function AddClientModal({ onClose, onCreated }) {
   const { act, t, lang } = useApp();
   const [f, setF] = useState({ name: '', phone: '', email: '', address: '', wilaya: '', commune: '' });
@@ -1417,7 +1448,8 @@ function AddClientModal({ onClose, onCreated }) {
   );
 }
 function POS() {
-  const { db, t, pn, money, lang, quote, checkout } = useApp();
+  const { db, t, pn, money, lang, quote, checkout, role } = useApp();
+  const canPrice = role === 'admin';
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('Toutes');
   const [cart, setCart] = useState([]);
@@ -1473,14 +1505,15 @@ function POS() {
             <div key={l.vid} className="fade-up flex items-center gap-2 rounded-xl bg-zinc-50 p-2">
               <Thumb p={p} cls="h-9 w-9 rounded-lg" txt="text-lg" />
               <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{pn(p)}</div><div className="tabular text-xs text-zinc-500">{vLabel(v, lang) && <span className="me-1.5 rounded bg-white px-1 ring-1 ring-zinc-200">{vLabel(v, lang)}</span>}</div></div>
-              <input type="number" min="0" value={l.price !== undefined ? l.price : v.price} onChange={e => setPrice(v.id, e.target.value)} title={t('Prix unitaire (modifiable)', 'سعر الوحدة (قابل للتعديل)')} className={`tabular w-20 rounded-lg border bg-white px-1.5 py-1 text-end text-xs ${l.price !== undefined && l.price !== '' && +l.price !== v.price ? 'border-amber-400 text-amber-700' : 'border-zinc-200'}`} />
+              {!canPrice && <span className="tabular w-20 text-end text-xs text-zinc-600">{money(v.price)}</span>}
+              {canPrice && <input type="number" min="0" value={l.price !== undefined ? l.price : v.price} onChange={e => setPrice(v.id, e.target.value)} title={t('Prix unitaire (modifiable)', 'سعر الوحدة (قابل للتعديل)')} className={`tabular w-20 rounded-lg border bg-white px-1.5 py-1 text-end text-xs ${l.price !== undefined && l.price !== '' && +l.price !== v.price ? 'border-amber-400 text-amber-700' : 'border-zinc-200'}`} />}
               <button onClick={() => setQty(v.id, l.qty - 1)} className="grid h-7 w-7 place-items-center rounded-lg bg-white border border-zinc-200"><Icon n="minus" s={12} /></button>
               <span className="tabular w-6 text-center text-sm font-semibold">{l.qty}</span>
               <button onClick={() => setQty(v.id, Math.min(v.stock, l.qty + 1))} className="grid h-7 w-7 place-items-center rounded-lg bg-white border border-zinc-200"><Icon n="plus" s={12} /></button>
             </div>); })}
         </div>
         <div className="mt-4 space-y-3">
-          <div><span className="mb-1 block text-xs font-medium text-zinc-500">{t('Client (fidélité)', 'الزبون (الولاء)')}</span><div className="flex gap-2"><Select value={clientId} onChange={e => { setClientId(e.target.value); setUsePts(0); }}><option value="">{t('Client de passage', 'زبون عابر')}</option>{db.clients.map(c => <option key={c.id} value={c.id}>{c.name} · {fmtNum(c.pts)} pts</option>)}</Select><Btn v="soft" onClick={() => setNewClient(true)} className="shrink-0"><Icon n="plus" s={14} />{t('Client', 'زبون')}</Btn></div></div>
+          <div><span className="mb-1 block text-xs font-medium text-zinc-500">{t('Client (fidélité)', 'الزبون (الولاء)')}</span><div className="flex gap-2"><div className="min-w-0 flex-1"><ClientSearch value={clientId} onChange={id => { setClientId(id); setUsePts(0); }} /></div><Btn v="soft" onClick={() => setNewClient(true)} className="shrink-0"><Icon n="plus" s={14} />{t('Client', 'زبون')}</Btn></div></div>
           <div className="flex gap-2"><Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder={t('Bon / code promo', 'قسيمة / رمز')} className="font-mono" /></div>
           {code && qt.vr && qt.vr.error && <div className="text-xs text-rose-600">{qt.vr.error}</div>}
           {code && qt.vr && qt.vr.v && <div className="text-xs text-emerald-700">✓ {qt.vr.v.code} · −{money(qt.vr.disc)}</div>}
