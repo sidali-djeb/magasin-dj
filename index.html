@@ -97,6 +97,7 @@ const ERR = {
   INVALID_QTY: ['Quantité invalide', 'كمية غير صالحة'], UNKNOWN_PRODUCT: ['Produit introuvable', 'منتج غير موجود'],
   NOT_FOUND: ['Introuvable', 'غير موجود'], SKU_REQUIRED: ['SKU requis pour chaque variante', 'الرمز مطلوب لكل متغير'], VARIANT_REQUIRED: ['Au moins une variante est requise', 'يلزم متغير واحد على الأقل'], CANNOT_DEMOTE_SELF: ['Vous ne pouvez pas retirer votre propre rôle admin', 'لا يمكنك إزالة دورك كمدير'], SUPPLIER_REQUIRED: ['Choisissez le fournisseur à rattacher', 'اختر المورد المراد ربطه'], INVALID_TRANSITION: ['Changement de statut impossible', 'تغيير الحالة غير ممكن'],
   INVALID_STATUS: ['Statut incompatible', 'حالة غير متوافقة'], EMPTY_ORDER: ['Commande vide', 'الطلب فارغ'],
+  ALREADY_RECEIVED: ['Commande déjà (partiellement) réceptionnée : suppression impossible', 'الطلب مستلم (جزئياً): لا يمكن حذفه'],
   INVALID_EMAIL: ['E-mail invalide', 'بريد إلكتروني غير صالح'], WEAK_PASSWORD: ['Mot de passe : 8 caractères minimum', 'كلمة المرور: 8 أحرف على الأقل'], EMAIL_EXISTS: ['Cet e-mail a déjà un compte', 'هذا البريد لديه حساب بالفعل'],
   NOTHING_TO_RESTOCK: ['Rien à réassortir', 'لا شيء لإعادة تخزينه'],
 };
@@ -877,6 +878,19 @@ function EditProductModal({ p, onClose }) {
 }
 function StockView({ readonly }) {
   const { db, act, t, pn, money, toast, lang } = useApp();
+  const dupProduct = p => act(() => must(sb.rpc('duplicate_product', { p_product_id: p.id })), t('Produit dupliqué (stock à 0) : modifiez-le', 'تم نسخ المنتج (المخزون 0): عدّله'));
+  const delProduct = async p => {
+    if (!confirm(t(`Supprimer « ${p.name} » ? S’il a déjà un historique (ventes, stock), il sera seulement retiré du catalogue.`, `حذف «${p.name}»؟ إذا كان له سجل (مبيعات، مخزون) فسيُزال من الكتالوج فقط.`))) return;
+    let archived = false;
+    const done = await act(async () => {
+      const r = await sb.from('products').delete().eq('id', p.id);
+      if (r.error) {
+        if (!/foreign key|violates/i.test(r.error.message || '')) throw r.error;
+        await must(sb.from('products').update({ active: false }).eq('id', p.id)); archived = true;
+      }
+    });
+    if (done) toast(archived ? t('Produit retiré du catalogue (historique conservé)', 'أُزيل المنتج من الكتالوج (السجل محفوظ)') : t('Produit supprimé', 'تم حذف المنتج'));
+  };
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('Toutes');
   const [sel, setSel] = useState({});
@@ -928,7 +942,7 @@ function StockView({ readonly }) {
           <table className="w-full text-sm">
             <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500"><tr>
               {!readonly && <th className="w-10 px-4 py-3"><input type="checkbox" checked={!!allOn} onChange={e => { const n = {}; if (e.target.checked) rows.forEach(p => n[p.id] = true); setSel(n); }} /></th>}
-              {[t('SKU', 'الرمز'), t('Produit', 'المنتج'), t('Catégorie', 'الفئة'), t('Stock', 'المخزون'), t('Seuil', 'الحد'), t('Valeur', 'القيمة'), t('Statut', 'الحالة')].map(h => <th key={h} className="px-4 py-3 text-start font-semibold">{h}</th>)}
+              {[t('SKU', 'الرمز'), t('Produit', 'المنتج'), t('Catégorie', 'الفئة'), t('Stock', 'المخزون'), t('Seuil', 'الحد'), t('Valeur', 'القيمة'), t('Statut', 'الحالة'), ...(readonly ? [] : [''])].map((h, i) => <th key={i} className="px-4 py-3 text-start font-semibold">{h}</th>)}
             </tr></thead>
             <tbody className="divide-y divide-zinc-100">
               {rows.map(p => (
@@ -945,6 +959,11 @@ function StockView({ readonly }) {
                   <td className="tabular px-4 py-3 text-zinc-500">{p.reorder}</td>
                   <td className="tabular px-4 py-3">{money(p.stock * p.cost)}</td>
                   <td className="px-4 py-3"><StockBadge p={p} /></td>
+                  {!readonly && <td className="px-4 py-3"><div className="flex justify-end gap-1">
+                    <button onClick={() => setEditing(p)} title={t('Modifier', 'تعديل')} className="rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="edit" s={14} /></button>
+                    <button onClick={() => dupProduct(p)} title={t('Dupliquer', 'نسخ')} className="rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="copy" s={14} /></button>
+                    <button onClick={() => delProduct(p)} title={t('Supprimer', 'حذف')} className="rounded-lg border border-zinc-200 p-1.5 text-rose-600 hover:bg-rose-50"><Icon n="trash" s={14} /></button>
+                  </div></td>}
                 </tr>
                 {p.variants.length > 1 && openP[p.id] && p.variants.map(v => (
                   <tr key={v.id} className="bg-zinc-50/70">
@@ -1105,6 +1124,7 @@ function Achats() {
                     <td className="tabular px-4 py-3 font-medium">{money(po.lines.reduce((s, l) => s + lineTotal(l), 0))}</td>
                     <td className="px-4 py-3"><StatusBadge status={po.status} /></td>
                     <td className="px-4 py-3 text-end">
+                      <Btn v="ghost" className="me-1 !px-2.5 !py-1 text-xs !text-rose-600" onClick={() => { if (confirm(t(`Supprimer le bon ${po.ref} ?`, `حذف الطلب ${po.ref}؟`))) act(() => must(sb.rpc('delete_purchase_order', { p_po_id: po.id })), t('Bon supprimé', 'تم حذف الطلب')); }}><Icon n="trash" s={13} /></Btn>
                       <Btn v="ghost" className="me-1 !px-2.5 !py-1 text-xs" onClick={() => mailPO(po.supplierId, po.ref, po.expected, po.lines)}><Icon n="send" s={13} />Email</Btn>
                       {po.status === 'Brouillon' && <Btn v="soft" onClick={() => send(po.id)}><Icon n="send" s={13} />{t('Envoyer', 'إرسال')}</Btn>}
                       {['Envoyée', 'Confirmée', 'Expédiée', 'Reçue partiellement'].includes(po.status) && <Btn v="accent" onClick={() => setRecv(po)}><Icon n="check" s={13} />{t('Réceptionner', 'استلام')}</Btn>}
@@ -1244,6 +1264,7 @@ function Ventes() {
 function Fidelite() {
   const { db, act, t, money, toast } = useApp();
   const r = db.rules;
+  const [editC, setEditC] = useState(null);
   const [f, setF] = useState(() => ({ perDA: r.perDA, redeemValue: r.redeemValue, silver: r.tiers.Silver, gold: r.tiers.Gold, mS: r.mult.Silver, mG: r.mult.Gold, dS: r.disc.Silver, dG: r.disc.Gold }));
   const saveRules = () => act(() => must(sb.from('loyalty_rules').update({ points_per_da: Math.max(1, Math.floor(+f.perDA) || 100), redeem_value: +f.redeemValue || 1, silver_threshold: Math.max(0, Math.floor(+f.silver) || 0), gold_threshold: Math.max(0, Math.floor(+f.gold) || 0), mult_silver: +f.mS || 1, mult_gold: +f.mG || 1, disc_silver: +f.dS || 0, disc_gold: +f.dG || 0 }).eq('id', 1)), t('Règles de fidélité enregistrées', 'تم حفظ قواعد الولاء'));
   const tiers = { Bronze: 0, Silver: 0, Gold: 0 };
@@ -1279,7 +1300,8 @@ function Fidelite() {
           <Btn className="mt-4 w-full" onClick={saveRules}><Icon n="check" s={14} />{t('Enregistrer les règles', 'حفظ القواعد')}</Btn>
         </Card>
         <Card className="overflow-hidden xl:col-span-2">
-          <div className="border-b border-zinc-100 px-5 py-4 font-semibold">{t('Comptes clients', 'حسابات الزبائن')}</div>
+          {editC && <AddClientModal c={editC} onClose={() => setEditC(null)} />}
+          <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-3"><span className="font-semibold">{t('Comptes clients', 'حسابات الزبائن')}</span><Btn v="soft" className="!px-2.5 !py-1 text-xs" onClick={() => setEditC({ id: null, name: '', phone: '', email: '', address: '', wilaya: '', commune: '', _new: true })}><Icon n="plus" s={13} />{t('Client', 'زبون')}</Btn></div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500"><tr>
@@ -1296,6 +1318,7 @@ function Fidelite() {
                     <td className="px-4 py-3"><div className="flex gap-1">
                       <button onClick={() => adjust(c.id, 100)} className="rounded-lg border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-50">+100</button>
                       <button onClick={() => adjust(c.id, -100)} className="rounded-lg border border-zinc-200 px-2 py-1 text-xs hover:bg-zinc-50">−100</button>
+                      <button onClick={() => setEditC(c)} title={t('Modifier', 'تعديل')} className="rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="edit" s={13} /></button>
                     </div></td>
                   </tr>); })}
               </tbody>
@@ -1431,9 +1454,10 @@ function ClientSearch({ value, onChange }) {
     </div>
   );
 }
-function AddClientModal({ onClose, onCreated }) {
+function AddClientModal({ onClose, onCreated, c }) {
   const { act, t, lang } = useApp();
-  const [f, setF] = useState({ name: '', phone: '', email: '', address: '', wilaya: '', commune: '' });
+  const editing = !!(c && c.id);
+  const [f, setF] = useState(() => c ? { name: c.name, phone: c.phone, email: c.email, address: c.address, wilaya: (String(c.wilaya).match(/^\d+/) || [''])[0].replace(/^0+/, '') || c.wilaya, commune: c.commune } : { name: '', phone: '', email: '', address: '', wilaya: '', commune: '' });
   const [dz, setDz] = useState(null);
   const [dzErr, setDzErr] = useState(false);
   useEffect(() => { let ok = true; loadDZ().then(d => { if (ok) setDz(d); }).catch(() => { if (ok) setDzErr(true); }); return () => { ok = false; }; }, []);
@@ -1444,11 +1468,18 @@ function AddClientModal({ onClose, onCreated }) {
   const save = async () => {
     if (!f.name.trim()) return;
     let newId = null;
-    const done = await act(async () => { const r = await must(sb.from('clients').insert({ name: f.name.trim(), phone: f.phone.trim() || null, email: f.email.trim() || null, address: f.address.trim() || null, wilaya: f.wilaya ? (wilayas.find(w => String(w.wilaya_code) === f.wilaya) ? wLabel0(wilayas.find(w => String(w.wilaya_code) === f.wilaya)) : f.wilaya) : null, commune: f.commune || null }).select('id').single()); newId = r.id; }, t('Client ajouté', 'تمت إضافة الزبون'));
-    if (done) { onCreated(newId); onClose(); }
+    const done = await act(async () => { const row = { name: f.name.trim(), phone: f.phone.trim() || null, email: f.email.trim() || null, address: f.address.trim() || null, wilaya: f.wilaya ? (wilayas.find(w => String(w.wilaya_code) === f.wilaya) ? wLabel0(wilayas.find(w => String(w.wilaya_code) === f.wilaya)) : f.wilaya) : null, commune: f.commune || null };
+      if (editing) await must(sb.from('clients').update(row).eq('id', c.id));
+      else { const r = await must(sb.from('clients').insert(row).select('id').single()); newId = r.id; } }, editing ? t('Client mis à jour', 'تم تحديث الزبون') : t('Client ajouté', 'تمت إضافة الزبون'));
+    if (done) { if (onCreated) onCreated(newId); onClose(); }
+  };
+  const del = async () => {
+    if (!confirm(t('Supprimer ce client ? Ses ventes passées sont conservées (sans nom).', 'حذف هذا الزبون؟ تبقى مبيعاته السابقة (بدون اسم).'))) return;
+    const done = await act(() => must(sb.from('clients').delete().eq('id', c.id)), t('Client supprimé', 'تم حذف الزبون'));
+    if (done) onClose();
   };
   return (
-    <Modal title={t('Nouveau client', 'زبون جديد')} onClose={onClose}>
+    <Modal title={editing ? `${t('Modifier', 'تعديل')} · ${c.name}` : t('Nouveau client', 'زبون جديد')} onClose={onClose}>
       <div className="grid gap-3">
         <Field label={t('Nom', 'الاسم')}><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
         <Field label={t('Téléphone', 'الهاتف')}><Input value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} dir="ltr" /></Field>
@@ -1461,7 +1492,7 @@ function AddClientModal({ onClose, onCreated }) {
           : <Select value={f.commune} onChange={e => setF({ ...f, commune: e.target.value })} disabled={!f.wilaya}><option value="">—</option>{communes.map(c => <option key={c.id} value={c.commune_name_fr}>{lang === 'ar' ? c.commune_name_ar : c.commune_name_fr}</option>)}</Select>}</Field>
         <Field label={t('Adresse', 'العنوان')}><Input value={f.address} onChange={e => setF({ ...f, address: e.target.value })} placeholder={t('Rue, n°, quartier…', 'الشارع، الرقم، الحي…')} /></Field>
       </div>
-      <div className="mt-5 flex justify-end gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn onClick={save}><Icon n="check" s={15} />{t('Ajouter', 'إضافة')}</Btn></div>
+      <div className="mt-5 flex flex-wrap justify-between gap-2">{editing ? <Btn v="danger" onClick={del}>{t('Supprimer', 'حذف')}</Btn> : <span />}<div className="flex gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn onClick={save}><Icon n="check" s={15} />{editing ? t('Enregistrer', 'حفظ') : t('Ajouter', 'إضافة')}</Btn></div></div>
     </Modal>
   );
 }
