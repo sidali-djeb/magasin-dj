@@ -1914,14 +1914,10 @@ function Utilisateurs() {
 const NAV = {
   admin: [
     { k: 'dash', fr: 'Tableau de bord', ar: 'لوحة القيادة', ic: 'dash' },
-    { k: 'stock', fr: 'Gestion de stock', ar: 'إدارة المخزون', ic: 'box' },
-    { k: 'achat', fr: 'Achat', ar: 'المشتريات', ic: 'truck' },
-    { k: 'fourn', fr: 'Fournisseurs', ar: 'الموردون', ic: 'users' },
-    { k: 'pos', fr: 'Comptoir', ar: 'الصندوق', ic: 'cart' },
-    { k: 'ventes', fr: 'Ventes', ar: 'المبيعات', ic: 'receipt' },
+    { k: 'stock', fr: 'Gestion (stock · achats · fournisseurs)', ar: 'الإدارة (مخزون · مشتريات · موردون)', ic: 'box' },
+    { k: 'ventes', fr: 'Ventes · Comptoir', ar: 'المبيعات · الصندوق', ic: 'cart' },
     { k: 'fid', fr: 'Système de fidélité', ar: 'نظام الولاء', ic: 'star' },
     { k: 'bons', fr: "Bons d'achat", ar: 'قسائم الشراء', ic: 'gift' },
-    { k: 'site', fr: 'Site web officiel', ar: 'الموقع الرسمي', ic: 'globe' },
     { k: 'users', fr: 'Utilisateurs', ar: 'المستخدمون', ic: 'user' },
   ],
   vendeur: [
@@ -1944,9 +1940,38 @@ const ROLES = [
   { k: 'fournisseur', fr: 'Fournisseur', ar: 'المورد', ic: 'truck' },
   { k: 'client', fr: 'Client', ar: 'الزبون', ic: 'user' },
 ];
+function PosEntry() { const { role } = useApp(); return role === 'admin' ? <Hub tabs={VENTES_TABS} initial="comptoir" /> : <POS />; }
+function Hub({ tabs, initial }) {
+  const { t, lang } = useApp();
+  const [tab, setTab] = useState(initial);
+  const [seen, setSeen] = useState({ [initial]: true });
+  const go = k => { setTab(k); setSeen(x => ({ ...x, [k]: true })); };
+  return (
+    <div>
+      <div className="mb-5 flex flex-wrap gap-1.5 rounded-2xl bg-zinc-100 p-1.5">
+        {tabs.map(x => <button key={x.k} onClick={() => go(x.k)} className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${tab === x.k ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-800'}`}><Icon n={x.ic} s={15} />{lang === 'ar' ? x.ar : x.fr}</button>)}
+      </div>
+      {tabs.map(x => seen[x.k] && <div key={x.k} className={tab === x.k ? '' : 'hidden'}><x.C /></div>)}
+    </div>
+  );
+}
+const GESTION_TABS = [
+  { k: 'produits', fr: 'Produits & stock', ar: 'المنتجات والمخزون', ic: 'box', C: () => <StockView /> },
+  { k: 'achat', fr: 'Achats', ar: 'المشتريات', ic: 'truck', C: Achats },
+  { k: 'fourn', fr: 'Fournisseurs', ar: 'الموردون', ic: 'users', C: Fournisseurs },
+];
+const VENTES_TABS = [
+  { k: 'comptoir', fr: 'Comptoir', ar: 'الصندوق', ic: 'cart', C: POS },
+  { k: 'journal', fr: 'Journal de vente', ar: 'سجل المبيعات', ic: 'receipt', C: Ventes },
+];
 const VIEWS = {
-  dash: Dashboard, stock: () => <StockView />, achat: Achats, fourn: Fournisseurs, ventes: Ventes, fid: Fidelite, bons: Bons, site: Storefront,
-  pos: POS, vjour: VentesJour, stockv: () => <StockView readonly />,
+  dash: Dashboard,
+  stock: () => <Hub tabs={GESTION_TABS} initial="produits" />,
+  achat: () => <Hub tabs={GESTION_TABS} initial="achat" />,
+  fourn: () => <Hub tabs={GESTION_TABS} initial="fourn" />,
+  ventes: () => <Hub tabs={VENTES_TABS} initial="comptoir" />,
+  fid: Fidelite, bons: Bons,
+  pos: () => <PosEntry />, vjour: VentesJour, stockv: () => <StockView readonly />,
   portail: () => <Fournisseur mode="portail" />, reassort: () => <Fournisseur mode="reassort" />,
   boutique: Storefront, mesp: MesPoints, users: Utilisateurs,
 };
@@ -2029,6 +2054,7 @@ function Shell({ session, lang, setLang }) {
 
   const ctx = { db, act, reload, busy, toast, t, lang, pn, money, role, view, setView, supplierId, setSupplierId, clientId, setClientId, quote, checkout, rules: db.rules, setReceipt };
   const View = VIEWS[view] || Dashboard;
+  const navKey = role === 'admin' ? ({ achat: 'stock', fourn: 'stock', pos: 'ventes' }[view] || view) : view;
 
   return (
     <Ctx.Provider value={ctx}>
@@ -2037,7 +2063,7 @@ function Shell({ session, lang, setLang }) {
           <div className="flex h-14 items-center gap-3 px-4">
             <div className="flex items-center gap-2.5">
               <div className="grid h-8 w-8 place-items-center rounded-lg bg-zinc-900 text-[13px] font-extrabold tracking-tight text-white">DJ</div>
-              <div className="hidden leading-tight sm:block"><div className="text-sm font-semibold">Magasin</div><div className="text-[11px] text-zinc-500">{t('Site web officiel & ERP', 'الموقع الرسمي ونظام الإدارة')}</div></div>
+              <div className="hidden leading-tight sm:block"><div className="text-sm font-semibold">Magasin</div><div className="text-[11px] text-zinc-500">{t('Gestion du magasin', 'إدارة المتجر')}</div></div>
             </div>
             <div className="ms-auto flex items-center gap-2">
               <div className="hidden text-end leading-tight sm:block"><div className="max-w-[180px] truncate text-xs font-semibold">{profile.full_name || session.user.email}</div><div className="text-[11px] text-zinc-500">{(ROLES.find(r => r.k === role) || {})[lang === 'ar' ? 'ar' : 'fr']}</div></div>
@@ -2053,7 +2079,7 @@ function Shell({ session, lang, setLang }) {
           <aside className="hidden w-60 shrink-0 flex-col gap-1 border-e border-zinc-200 bg-white p-3 md:flex">
             <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">{lang === 'ar' ? ROLE_LABEL[role][1] : ROLE_LABEL[role][0]}</div>
             {NAV[role].map(n => (
-              <button key={n.k} onClick={() => setView(n.k)} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition ${view === n.k ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>
+              <button key={n.k} onClick={() => setView(n.k)} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition ${navKey === n.k ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>
                 <Icon n={n.ic} s={16} />{lang === 'ar' ? n.ar : n.fr}
               </button>
             ))}
@@ -2061,7 +2087,7 @@ function Shell({ session, lang, setLang }) {
           </aside>
           <main className="min-w-0 flex-1 p-4 md:p-6">
             <div className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 md:hidden">
-              {NAV[role].map(n => <button key={n.k} onClick={() => setView(n.k)} className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${view === n.k ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 ring-1 ring-zinc-200'}`}><Icon n={n.ic} s={13} />{lang === 'ar' ? n.ar : n.fr}</button>)}
+              {NAV[role].map(n => <button key={n.k} onClick={() => setView(n.k)} className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${navKey === n.k ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 ring-1 ring-zinc-200'}`}><Icon n={n.ic} s={13} />{lang === 'ar' ? n.ar : n.fr}</button>)}
             </div>
             <div key={role + view} className="fade-up"><View /></div>
           </main>
