@@ -180,6 +180,53 @@ function PhotoButton({ p, readonly }) {
   );
 }
 
+/* Palette de couleurs produit */
+const COLORS = [
+  { fr: 'Blanc', ar: 'أبيض', hex: '#ffffff' }, { fr: 'Noir', ar: 'أسود', hex: '#18181b' }, { fr: 'Gris', ar: 'رمادي', hex: '#9ca3af' },
+  { fr: 'Beige', ar: 'بيج', hex: '#d9c3a0' }, { fr: 'Marron', ar: 'بني', hex: '#8b5a2b' }, { fr: 'Rouge', ar: 'أحمر', hex: '#dc2626' },
+  { fr: 'Bordeaux', ar: 'عنابي', hex: '#7f1d1d' }, { fr: 'Rose', ar: 'وردي', hex: '#f472b6' }, { fr: 'Orange', ar: 'برتقالي', hex: '#f97316' },
+  { fr: 'Jaune', ar: 'أصفر', hex: '#facc15' }, { fr: 'Vert', ar: 'أخضر', hex: '#16a34a' }, { fr: 'Kaki', ar: 'كاكي', hex: '#6b7a3a' },
+  { fr: 'Turquoise', ar: 'فيروزي', hex: '#14b8a6' }, { fr: 'Bleu ciel', ar: 'أزرق سماوي', hex: '#7dd3fc' }, { fr: 'Bleu', ar: 'أزرق', hex: '#2563eb' },
+  { fr: 'Bleu marine', ar: 'أزرق داكن', hex: '#1e3a8a' }, { fr: 'Violet', ar: 'بنفسجي', hex: '#7c3aed' }, { fr: 'Doré', ar: 'ذهبي', hex: '#d4af37' },
+];
+const colorHex = n => (COLORS.find(c => c.fr.toLowerCase() === String(n).trim().toLowerCase()) || {}).hex;
+const splitList = v => String(v || '').split(',').map(x => x.trim()).filter(Boolean);
+function ColorDots({ value }) {
+  const { lang } = useApp();
+  const list = splitList(value);
+  if (!list.length) return null;
+  return <div className="mt-1 flex flex-wrap items-center gap-1">{list.map(n => { const h = colorHex(n); const c = COLORS.find(x => x.fr.toLowerCase() === n.toLowerCase()); return <span key={n} className="inline-flex items-center gap-1 text-[11px] text-zinc-500"><span className="inline-block h-3 w-3 rounded-full border border-zinc-300" style={{ background: h || 'conic-gradient(#f87171,#facc15,#4ade80,#60a5fa,#c084fc,#f87171)' }} />{lang === 'ar' && c ? c.ar : n}</span>; })}</div>;
+}
+function ColorPicker({ value, onChange }) {
+  const { t, lang } = useApp();
+  const sel = splitList(value);
+  const has = n => sel.some(x => x.toLowerCase() === n.toLowerCase());
+  const toggle = n => onChange((has(n) ? sel.filter(x => x.toLowerCase() !== n.toLowerCase()) : [...sel, n]).join(', '));
+  const [custom, setCustom] = useState('');
+  const addCustom = () => { const n = custom.trim(); if (n && !has(n)) onChange([...sel, n].join(', ')); setCustom(''); };
+  return (
+    <div className="sm:col-span-2">
+      <div className="mb-1 text-xs font-medium text-zinc-500">{t('Couleur(s) — cliquez pour choisir', 'اللون (الألوان) — انقر للاختيار')}</div>
+      <div className="flex flex-wrap gap-2">
+        {COLORS.map(c => (
+          <button key={c.fr} type="button" onClick={() => toggle(c.fr)} title={lang === 'ar' ? c.ar : c.fr}
+            className={`h-8 w-8 rounded-full border transition ${has(c.fr) ? 'ring-2 ring-zinc-900 ring-offset-2' : 'border-zinc-300 hover:scale-110'}`} style={{ background: c.hex }}>
+            {has(c.fr) && <span className={`text-xs font-bold ${['Blanc', 'Beige', 'Jaune', 'Bleu ciel', 'Rose', 'Doré'].includes(c.fr) ? 'text-zinc-900' : 'text-white'}`}>✓</span>}
+          </button>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {sel.map(n => <span key={n} className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-xs">{n}<button type="button" onClick={() => toggle(n)} className="text-zinc-400 hover:text-zinc-900">✕</button></span>)}
+        {!sel.length && <span className="text-xs text-zinc-400">{t('Aucune couleur choisie', 'لم يتم اختيار لون')}</span>}
+      </div>
+      <div className="mt-2 flex gap-2">
+        <Input value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }} placeholder={t('Autre couleur (ex. Camel)', 'لون آخر (مثال: كاميل)')} className="max-w-[220px]" />
+        <Btn type="button" v="soft" onClick={addCustom}>{t('Ajouter', 'إضافة')}</Btn>
+      </div>
+    </div>
+  );
+}
+
 /* Champ numérique : n'envoie la valeur au serveur qu'à la validation (Entrée / perte de focus) */
 function NumInput({ value, onCommit, min = 0, className = '' }) {
   const [v, setV] = useState(String(value));
@@ -549,7 +596,7 @@ function AddProductModal({ onClose }) {
         <Field label={t('Seuil de réassort', 'حد إعادة التخزين')}><Input type="number" value={f.reorder} onChange={e => set('reorder', e.target.value)} /></Field>
         <Field label={t('Fournisseur', 'المورد')}><Select value={f.sup} onChange={e => set('sup', e.target.value)}>{db.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
         <Field label={t('Tissu', 'القماش')}><Input value={f.fabric} onChange={e => set('fabric', e.target.value)} /></Field>
-        <Field label={t('Couleur', 'اللون')}><Input value={f.color} onChange={e => set('color', e.target.value)} placeholder={t('Bleu marine', 'أزرق داكن')} /></Field>
+        <ColorPicker value={f.color} onChange={v => set('color', v)} />
         <Field label={t('Tailles disponibles', 'المقاسات المتوفرة')}><Input value={f.sizes} onChange={e => set('sizes', e.target.value)} placeholder="S, M, L, XL" /></Field>
         <Field label={t('Photo du produit', 'صورة المنتج')}>
           <div className="flex items-center gap-3">
@@ -588,7 +635,7 @@ function EditProductModal({ p, onClose }) {
         <Field label={t('Seuil de réassort', 'حد إعادة التخزين')}><Input type="number" value={f.reorder} onChange={e => set('reorder', e.target.value)} /></Field>
         <Field label={t('Fournisseur', 'المورد')}><Select value={f.sup} onChange={e => set('sup', e.target.value)}><option value="">—</option>{db.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
         <Field label={t('Tissu', 'القماش')}><Input value={f.fabric} onChange={e => set('fabric', e.target.value)} /></Field>
-        <Field label={t('Couleur', 'اللون')}><Input value={f.color} onChange={e => set('color', e.target.value)} /></Field>
+        <ColorPicker value={f.color} onChange={v => set('color', v)} />
         <Field label={t('Tailles disponibles', 'المقاسات المتوفرة')}><Input value={f.sizes} onChange={e => set('sizes', e.target.value)} placeholder="S, M, L, XL" /></Field>
         <Field label={t('Emoji (si pas de photo)', 'رمز (عند غياب الصورة)')}><Input value={f.emoji} onChange={e => set('emoji', e.target.value)} /></Field>
       </div>
@@ -1231,7 +1278,8 @@ function Storefront() {
           <Card key={p.id} className="group overflow-hidden transition hover:-translate-y-1 hover:shadow-lg">
             <Thumb p={p} cls="h-44 w-full transition group-hover:scale-105" txt="text-7xl" />
             <div className="p-4">
-              <div className="text-[11px] uppercase tracking-wider text-zinc-400">{lang === 'ar' ? CAT_AR[p.cat] : p.cat} · {p.color}</div>
+              <div className="text-[11px] uppercase tracking-wider text-zinc-400">{lang === 'ar' ? CAT_AR[p.cat] : p.cat}</div>
+              <ColorDots value={p.color} />
               {p.sizes && <div className="mt-0.5 flex flex-wrap gap-1">{p.sizes.split(',').map(z => z.trim()).filter(Boolean).map(z => <span key={z} className="rounded border border-zinc-200 px-1.5 text-[10px] text-zinc-600">{z}</span>)}</div>}
               <div className="mt-0.5 truncate font-semibold">{pn(p)}</div>
               <div className="mt-2 flex items-center justify-between">
