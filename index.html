@@ -51,7 +51,7 @@
 </script>
 
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useContext, createContext, useRef } = React;
+const { useState, useEffect, useContext, createContext, useRef, useMemo } = React;
 const Ctx = createContext(null);
 const useApp = () => useContext(Ctx);
 
@@ -130,7 +130,7 @@ async function loadAll(role) {
   const sizeIdx = z => { const i = SIZE_ORDER.indexOf(z); return i < 0 ? 999 : i; };
   Object.values(byP).forEach(list => list.sort((a, b) => (a.color || '').localeCompare(b.color || '') || sizeIdx(a.size) - sizeIdx(b.size)));
   const uniqJoin = (list, k) => [...new Set((list || []).map(v => v[k]).filter(Boolean))].join(', ');
-  const clients = cls.map(c => ({ id: c.id, name: c.name, email: c.email || '', phone: c.phone || '', earned: c.points_earned_total, pts: c.points_balance, spend: Number(c.total_spent) }));
+  const clients = cls.map(c => ({ id: c.id, name: c.name, email: c.email || '', phone: c.phone || '', address: c.address || '', wilaya: c.wilaya || '', commune: c.commune || '', earned: c.points_earned_total, pts: c.points_balance, spend: Number(c.total_spent) }));
   const cname = Object.fromEntries(clients.map(c => [c.id, c.name]));
   const r = rl[0];
   return {
@@ -451,7 +451,7 @@ function checkVoucher(code, vouchers, subtotal, t) {
 }
 
 function quoteSale(db, { cart, clientId, code, usePts }, t) {
-  const lines = cart.map(l => { const p = db.products.find(x => x.id === l.pid); const v = p && p.variants.find(x => x.id === l.vid); if (!v) return null; const fr = vLabel(v, 'fr'), ar = vLabel(v, 'ar'); return { pid: p.id, vid: v.id, name: p.name + (fr ? ` (${fr})` : ''), ar: p.ar + (ar ? ` (${ar})` : ''), qty: l.qty, price: v.price, stock: v.stock }; }).filter(Boolean);
+  const lines = cart.map(l => { const p = db.products.find(x => x.id === l.pid); const v = p && p.variants.find(x => x.id === l.vid); if (!v) return null; const fr = vLabel(v, 'fr'), ar = vLabel(v, 'ar'); return { pid: p.id, vid: v.id, name: p.name + (fr ? ` (${fr})` : ''), ar: p.ar + (ar ? ` (${ar})` : ''), qty: l.qty, price: (l.price !== undefined && l.price !== null && l.price !== '' && +l.price >= 0) ? Math.round(+l.price) : v.price, stock: v.stock }; }).filter(Boolean);
   const subtotal = lines.reduce((s, l) => s + l.price * l.qty, 0);
   const client = db.clients.find(c => c.id === clientId) || null;
   const vr = code ? checkVoucher(code, db.vouchers, subtotal, t) : null;
@@ -620,6 +620,30 @@ function Notifs() {
     </div>
   );
 }
+const escH = x => String(x == null ? '' : x).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function printTicket(sale, money, t, lang) {
+  const ar = lang === 'ar';
+  const rows = sale.lines.map(l => `<tr><td colspan="2">${escH(ar ? l.ar : l.name)}</td></tr><tr><td>${l.qty} x ${escH(money(l.price))}</td><td class="r">${escH(money(l.qty * l.price))}</td></tr>`).join('');
+  const ln = (k, v) => `<tr><td>${escH(k)}</td><td class="r">${escH(v)}</td></tr>`;
+  const html = `<!doctype html><html dir="${ar ? 'rtl' : 'ltr'}"><head><meta charset="utf-8"><title>${escH(sale.ref)}</title><style>
+    @page{size:80mm auto;margin:3mm}body{font:12px/1.35 monospace;width:74mm;margin:0;color:#000}
+    h1{font-size:16px;text-align:center;margin:0 0 2px}.c{text-align:center}table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}.r{text-align:end;white-space:nowrap}
+    hr{border:0;border-top:1px dashed #000;margin:5px 0}.tot td{font-size:14px;font-weight:bold}</style></head><body>
+    <h1>Magasin DJ</h1><div class="c">${escH(sale.date)}</div><div class="c">${escH(sale.ref)}</div>${sale.clientName ? `<div class="c">${escH(sale.clientName)}</div>` : ''}<hr>
+    <table>${rows}</table><hr><table>
+    ${ln(t('Sous-total', 'المجموع الفرعي'), money(sale.subtotal))}
+    ${sale.tierDisc ? ln(t('Remise palier', 'خصم الفئة'), '-' + money(sale.tierDisc)) : ''}
+    ${sale.voucherDisc ? ln(t('Bon', 'قسيمة') + ' ' + (sale.voucher || ''), '-' + money(sale.voucherDisc)) : ''}
+    ${sale.pointsDisc ? ln(t('Points utilisés', 'نقاط مستعملة'), '-' + money(sale.pointsDisc)) : ''}
+    <tr class="tot"><td>${escH(t('TOTAL', 'الإجمالي'))}</td><td class="r">${escH(money(sale.total))}</td></tr>
+    ${sale.pointsEarned ? ln(t('Points gagnés', 'نقاط مكتسبة'), '+' + sale.pointsEarned) : ''}
+    </table><hr><div class="c">${escH(t('Merci de votre visite', 'شكراً لزيارتكم'))}</div></body></html>`;
+  const fr = document.createElement('iframe');
+  fr.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0';
+  document.body.appendChild(fr);
+  const d = fr.contentWindow.document; d.open(); d.write(html); d.close();
+  setTimeout(() => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) {} setTimeout(() => fr.remove(), 60000); }, 300);
+}
 function ReceiptModal({ sale, onClose }) {
   const { t, money, lang, toast } = useApp();
   const txt = [`${t('Magasin DJ', 'متجر DJ')} — ${sale.ref}`, sale.date, sale.clientName, '', ...sale.lines.map(l => `${l.qty} x ${lang === 'ar' ? l.ar : l.name} = ${money(l.qty * l.price)}`), '', `${t('Sous-total', 'المجموع الفرعي')}: ${money(sale.subtotal)}`, sale.tierDisc ? `${t('Remise palier', 'خصم الفئة')}: -${money(sale.tierDisc)}` : '', sale.voucherDisc ? `${t('Bon', 'قسيمة')} ${sale.voucher}: -${money(sale.voucherDisc)}` : '', sale.pointsDisc ? `${t('Points utilisés', 'نقاط مستعملة')}: -${money(sale.pointsDisc)}` : '', `${t('TOTAL', 'الإجمالي')}: ${money(sale.total)}`, sale.pointsEarned ? `${t('Points gagnés', 'نقاط مكتسبة')}: +${sale.pointsEarned}` : ''].filter(x => x !== '').join('\n');
@@ -638,7 +662,8 @@ function ReceiptModal({ sale, onClose }) {
         <div className="flex justify-between border-t border-zinc-200 pt-2 text-base font-bold"><span>Total</span><span className="tabular">{money(sale.total)}</span></div>
         {sale.pointsEarned > 0 && <div className="flex justify-between text-xs text-violet-700"><span>{t('Points gagnés', 'نقاط مكتسبة')}</span><span className="tabular">+{sale.pointsEarned}</span></div>}
       </div>
-      <div className="mt-5 flex gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Btn className="flex-1" v="accent" onClick={() => printTicket(sale, money, t, lang)}><Icon n="receipt" s={15} />{t('Imprimer le ticket', 'طباعة التذكرة')}</Btn>
         <Btn className="flex-1" v="ghost" onClick={() => navigator.clipboard.writeText(txt).then(() => toast(t('Reçu copié', 'تم نسخ الإيصال'))).catch(() => toast(t('Copie indisponible ici', 'النسخ غير متاح هنا'), 'err'))}><Icon n="copy" s={15} />{t('Copier le reçu', 'نسخ الإيصال')}</Btn>
         <Btn className="flex-1" onClick={onClose}>{t('Fermer', 'إغلاق')}</Btn>
       </div>
@@ -1355,11 +1380,49 @@ function Bons() {
 }
 
 /* ───────────────────────── Caisse (Vendeur) ───────────────────────── */
+let DZ_PROMISE = null;
+const loadDZ = () => DZ_PROMISE || (DZ_PROMISE = fetch('https://cdn.jsdelivr.net/npm/geoalgeria/data/ecommerce/communes.json').then(r => { if (!r.ok) throw new Error('dz'); return r.json(); }).catch(e => { DZ_PROMISE = null; throw e; }));
+function AddClientModal({ onClose, onCreated }) {
+  const { act, t, lang } = useApp();
+  const [f, setF] = useState({ name: '', phone: '', email: '', address: '', wilaya: '', commune: '' });
+  const [dz, setDz] = useState(null);
+  const [dzErr, setDzErr] = useState(false);
+  useEffect(() => { let ok = true; loadDZ().then(d => { if (ok) setDz(d); }).catch(() => { if (ok) setDzErr(true); }); return () => { ok = false; }; }, []);
+  const wilayas = useMemo(() => dz ? [...new Map(dz.map(c => [c.wilaya_code, c])).values()].sort((a, b) => a.wilaya_code - b.wilaya_code) : [], [dz]);
+  const communes = useMemo(() => dz && f.wilaya ? dz.filter(c => String(c.wilaya_code) === f.wilaya).sort((a, b) => a.commune_name_fr.localeCompare(b.commune_name_fr)) : [], [dz, f.wilaya]);
+  const wLabel0 = w => `${String(w.wilaya_code).padStart(2, '0')} - ${w.wilaya_name_fr}`;
+  const wLabel = w => `${String(w.wilaya_code).padStart(2, '0')} - ${lang === 'ar' ? w.wilaya_name_ar : w.wilaya_name_fr}`;
+  const save = async () => {
+    if (!f.name.trim()) return;
+    let newId = null;
+    const done = await act(async () => { const r = await must(sb.from('clients').insert({ name: f.name.trim(), phone: f.phone.trim() || null, email: f.email.trim() || null, address: f.address.trim() || null, wilaya: f.wilaya ? (wilayas.find(w => String(w.wilaya_code) === f.wilaya) ? wLabel0(wilayas.find(w => String(w.wilaya_code) === f.wilaya)) : f.wilaya) : null, commune: f.commune || null }).select('id').single()); newId = r.id; }, t('Client ajouté', 'تمت إضافة الزبون'));
+    if (done) { onCreated(newId); onClose(); }
+  };
+  return (
+    <Modal title={t('Nouveau client', 'زبون جديد')} onClose={onClose}>
+      <div className="grid gap-3">
+        <Field label={t('Nom', 'الاسم')}><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
+        <Field label={t('Téléphone', 'الهاتف')}><Input value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })} dir="ltr" /></Field>
+        <Field label="Email"><Input value={f.email} onChange={e => setF({ ...f, email: e.target.value })} dir="ltr" /></Field>
+        <Field label={t('Wilaya', 'الولاية')}>{dzErr
+          ? <Input value={f.wilaya} onChange={e => setF({ ...f, wilaya: e.target.value })} placeholder={t('Saisir la wilaya', 'اكتب الولاية')} />
+          : <Select value={f.wilaya} onChange={e => setF({ ...f, wilaya: e.target.value, commune: '' })}><option value="">{dz ? '—' : t('Chargement…', 'جارٍ التحميل…')}</option>{wilayas.map(w => <option key={w.wilaya_code} value={w.wilaya_code}>{wLabel(w)}</option>)}</Select>}</Field>
+        <Field label={t('Commune', 'البلدية')}>{dzErr
+          ? <Input value={f.commune} onChange={e => setF({ ...f, commune: e.target.value })} placeholder={t('Saisir la commune', 'اكتب البلدية')} />
+          : <Select value={f.commune} onChange={e => setF({ ...f, commune: e.target.value })} disabled={!f.wilaya}><option value="">—</option>{communes.map(c => <option key={c.id} value={c.commune_name_fr}>{lang === 'ar' ? c.commune_name_ar : c.commune_name_fr}</option>)}</Select>}</Field>
+        <Field label={t('Adresse', 'العنوان')}><Input value={f.address} onChange={e => setF({ ...f, address: e.target.value })} placeholder={t('Rue, n°, quartier…', 'الشارع، الرقم، الحي…')} /></Field>
+      </div>
+      <div className="mt-5 flex justify-end gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn onClick={save}><Icon n="check" s={15} />{t('Ajouter', 'إضافة')}</Btn></div>
+    </Modal>
+  );
+}
 function POS() {
   const { db, t, pn, money, lang, quote, checkout } = useApp();
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('Toutes');
   const [cart, setCart] = useState([]);
+  const [newClient, setNewClient] = useState(false);
+  const [autoPrint, setAutoPrint] = useState(true);
   const [clientId, setClientId] = useState('');
   const [code, setCode] = useState('');
   const [usePts, setUsePts] = useState(0);
@@ -1375,15 +1438,17 @@ function POS() {
     if (p.variants.length === 1) addV(p, p.variants[0]); else setPicking(p);
   };
   const setQty = (vid, n) => setCart(cart.map(x => x.vid === vid ? { ...x, qty: n } : x).filter(x => x.qty > 0));
+  const setPrice = (vid, val) => setCart(cart.map(x => x.vid === vid ? { ...x, price: val === '' ? '' : Math.max(0, Math.round(+val) || 0) } : x));
   const qt = quote({ cart, clientId: clientId || null, code, usePts: Number(usePts) || 0 });
   const client = qt.client;
   const finish = async () => {
     const sale = await checkout({ channel: 'POS', cart, clientId: clientId || null, code, usePts: Number(usePts) || 0 });
-    if (sale) { setCart([]); setCode(''); setUsePts(0); }
+    if (sale) { setCart([]); setCode(''); setUsePts(0); if (autoPrint && sale.lines) printTicket(sale, money, t, lang); }
   };
   return (
     <div className="grid gap-4 xl:grid-cols-5">
       {picking && <VariantPicker p={picking} onPick={v => { addV(picking, v); setPicking(null); }} onClose={() => setPicking(null)} />}
+      {newClient && <AddClientModal onClose={() => setNewClient(false)} onCreated={id => { setClientId(id); setUsePts(0); }} />}
       <div className="xl:col-span-3">
         <PageTitle title={t('Vente · Caisse', 'البيع · الصندوق')} sub={t('Encaissement rapide, stock déduit automatiquement', 'تسجيل سريع، والمخزون يُخصم تلقائياً')} />
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -1407,14 +1472,15 @@ function POS() {
           {cart.map(l => { const p = db.products.find(x => x.id === l.pid); const v = p && p.variants.find(x => x.id === l.vid); if (!v) return null; return (
             <div key={l.vid} className="fade-up flex items-center gap-2 rounded-xl bg-zinc-50 p-2">
               <Thumb p={p} cls="h-9 w-9 rounded-lg" txt="text-lg" />
-              <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{pn(p)}</div><div className="tabular text-xs text-zinc-500">{vLabel(v, lang) && <span className="me-1.5 rounded bg-white px-1 ring-1 ring-zinc-200">{vLabel(v, lang)}</span>}{money(v.price)}</div></div>
+              <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium">{pn(p)}</div><div className="tabular text-xs text-zinc-500">{vLabel(v, lang) && <span className="me-1.5 rounded bg-white px-1 ring-1 ring-zinc-200">{vLabel(v, lang)}</span>}</div></div>
+              <input type="number" min="0" value={l.price !== undefined ? l.price : v.price} onChange={e => setPrice(v.id, e.target.value)} title={t('Prix unitaire (modifiable)', 'سعر الوحدة (قابل للتعديل)')} className={`tabular w-20 rounded-lg border bg-white px-1.5 py-1 text-end text-xs ${l.price !== undefined && l.price !== '' && +l.price !== v.price ? 'border-amber-400 text-amber-700' : 'border-zinc-200'}`} />
               <button onClick={() => setQty(v.id, l.qty - 1)} className="grid h-7 w-7 place-items-center rounded-lg bg-white border border-zinc-200"><Icon n="minus" s={12} /></button>
               <span className="tabular w-6 text-center text-sm font-semibold">{l.qty}</span>
               <button onClick={() => setQty(v.id, Math.min(v.stock, l.qty + 1))} className="grid h-7 w-7 place-items-center rounded-lg bg-white border border-zinc-200"><Icon n="plus" s={12} /></button>
             </div>); })}
         </div>
         <div className="mt-4 space-y-3">
-          <Field label={t('Client (fidélité)', 'الزبون (الولاء)')}><Select value={clientId} onChange={e => { setClientId(e.target.value); setUsePts(0); }}><option value="">{t('Client de passage', 'زبون عابر')}</option>{db.clients.map(c => <option key={c.id} value={c.id}>{c.name} · {fmtNum(c.pts)} pts</option>)}</Select></Field>
+          <div><span className="mb-1 block text-xs font-medium text-zinc-500">{t('Client (fidélité)', 'الزبون (الولاء)')}</span><div className="flex gap-2"><Select value={clientId} onChange={e => { setClientId(e.target.value); setUsePts(0); }}><option value="">{t('Client de passage', 'زبون عابر')}</option>{db.clients.map(c => <option key={c.id} value={c.id}>{c.name} · {fmtNum(c.pts)} pts</option>)}</Select><Btn v="soft" onClick={() => setNewClient(true)} className="shrink-0"><Icon n="plus" s={14} />{t('Client', 'زبون')}</Btn></div></div>
           <div className="flex gap-2"><Input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder={t('Bon / code promo', 'قسيمة / رمز')} className="font-mono" /></div>
           {code && qt.vr && qt.vr.error && <div className="text-xs text-rose-600">{qt.vr.error}</div>}
           {code && qt.vr && qt.vr.v && <div className="text-xs text-emerald-700">✓ {qt.vr.v.code} · −{money(qt.vr.disc)}</div>}
@@ -1434,7 +1500,8 @@ function POS() {
           {qt.pointsEarned > 0 && <div className="text-end text-xs text-violet-700">+{qt.pointsEarned} {t('points à créditer', 'نقاط للإضافة')}</div>}
         </div>
         {qt.stockErr && <div className="mt-2 text-xs text-rose-600">{t('Stock insuffisant', 'مخزون غير كافٍ')} : {lang === 'ar' ? qt.stockErr.ar : qt.stockErr.name}</div>}
-        <Btn v="accent" className="mt-4 w-full py-3" disabled={!cart.length} onClick={finish}><Icon n="check" s={16} />{t('Encaisser', 'تسجيل الدفع')} · {money(qt.total)}</Btn>
+        <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-zinc-600"><input type="checkbox" checked={autoPrint} onChange={e => setAutoPrint(e.target.checked)} />{t('Imprimer le ticket après l’encaissement', 'طباعة التذكرة بعد الدفع')}</label>
+        <Btn v="accent" className="mt-3 w-full py-3" disabled={!cart.length} onClick={finish}><Icon n="check" s={16} />{t('Encaisser', 'تسجيل الدفع')} · {money(qt.total)}</Btn>
       </Card>
     </div>
   );
@@ -1830,7 +1897,7 @@ function Shell({ session, lang, setLang }) {
     if (q.error) { toast(q.error, 'err'); return null; }
     setBusy(true);
     try {
-      const row = await must(sb.rpc('create_sale', { p_channel: args.channel === 'Web' ? 'web' : 'pos', p_client_id: args.clientId || null, p_items: q.lines.map(l => ({ variant_id: l.vid, qty: l.qty })), p_voucher_code: args.code ? args.code.trim() : null, p_points_used: q.pointsUsed }));
+      const row = await must(sb.rpc('create_sale', { p_channel: args.channel === 'Web' ? 'web' : 'pos', p_client_id: args.clientId || null, p_items: q.lines.map(l => ({ variant_id: l.vid, qty: l.qty, unit_price: l.price })), p_voucher_code: args.code ? args.code.trim() : null, p_points_used: q.pointsUsed }));
       const d = await reload();
       const sale = d.sales.find(x => x.id === row.id) || null;
       toast(t(`Vente ${row.ref} encaissée`, `تم تسجيل البيع ${row.ref}`));
