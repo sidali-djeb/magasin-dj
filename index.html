@@ -125,7 +125,7 @@ async function loadAll(role) {
   const cname = Object.fromEntries(clients.map(c => [c.id, c.name]));
   const r = rl[0];
   return {
-    products: prods.map(p => ({ id: p.id, sku: p.sku, name: p.name, ar: p.name_ar || p.name, cat: CAT_FROM[p.category] || 'Accessoires', price: Number(p.price), cost: Number(p.cost || 0), stock: p.stock, reorder: p.reorder_level, sup: p.supplier_id, fabric: p.fabric || '', color: p.color || '', emoji: p.emoji || '🏷️', img: p.image_url || '', bg: bgOf(p.sku) })),
+    products: prods.map(p => ({ id: p.id, sku: p.sku, name: p.name, ar: p.name_ar || p.name, cat: CAT_FROM[p.category] || 'Accessoires', price: Number(p.price), cost: Number(p.cost || 0), stock: p.stock, reorder: p.reorder_level, sup: p.supplier_id, fabric: p.fabric || '', color: p.color || '', sizes: p.sizes || '', emoji: p.emoji || '🏷️', img: p.image_url || '', bg: bgOf(p.sku) })),
     suppliers: sups.map(x => ({ id: x.id, name: x.name, contact: x.contact_name || '', email: x.email || '', city: x.city || '', leadDays: x.lead_days, rating: Number(x.rating || 0) })),
     clients,
     sales: sales.map(x => ({
@@ -523,13 +523,13 @@ function Dashboard() {
 function AddProductModal({ onClose }) {
   const { db, act, toast, t } = useApp();
   const [file, setFile] = useState(null);
-  const [f, setF] = useState({ name: '', ar: '', sku: '', cat: 'Hommes', price: 0, cost: 0, stock: 0, reorder: 5, sup: db.suppliers[0]?.id || '', fabric: '', color: '', emoji: '🏷️' });
+  const [f, setF] = useState({ name: '', ar: '', sku: '', cat: 'Hommes', price: 0, cost: 0, stock: 0, reorder: 5, sup: db.suppliers[0]?.id || '', fabric: '', color: '', sizes: '', emoji: '🏷️' });
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
   const save = async () => {
     if (!f.name.trim() || !f.sku.trim()) { toast(t('Nom et SKU requis', 'الاسم والرمز مطلوبان'), 'err'); return; }
     if (db.products.some(p => p.sku === f.sku.trim())) { toast(t('SKU déjà utilisé', 'الرمز مستعمل'), 'err'); return; }
     const done = await act(async () => {
-      const row = await must(sb.from('products').insert({ sku: f.sku.trim().toUpperCase(), name: f.name.trim(), name_ar: f.ar.trim() || null, category: CAT_TO[f.cat], price: +f.price || 0, cost: +f.cost || 0, reorder_level: Math.max(0, Math.floor(+f.reorder) || 0), supplier_id: f.sup || null, fabric: f.fabric || null, color: f.color || null, emoji: f.emoji || '🏷️' }).select('id').single());
+      const row = await must(sb.from('products').insert({ sku: f.sku.trim().toUpperCase(), name: f.name.trim(), name_ar: f.ar.trim() || null, category: CAT_TO[f.cat], price: +f.price || 0, cost: +f.cost || 0, reorder_level: Math.max(0, Math.floor(+f.reorder) || 0), supplier_id: f.sup || null, fabric: f.fabric || null, color: f.color.trim() || null, sizes: f.sizes.trim() || null, emoji: f.emoji || '🏷️' }).select('id').single());
       if (file) await uploadProductImage(file, row.id);
       if ((+f.stock || 0) > 0) await must(sb.rpc('set_stock', { p_product_id: row.id, p_stock: Math.floor(+f.stock), p_note: 'Stock initial' }));
     }, t('Produit ajouté', 'تمت إضافة المنتج'));
@@ -548,12 +548,32 @@ function AddProductModal({ onClose }) {
         <Field label={t('Seuil de réassort', 'حد إعادة التخزين')}><Input type="number" value={f.reorder} onChange={e => set('reorder', e.target.value)} /></Field>
         <Field label={t('Fournisseur', 'المورد')}><Select value={f.sup} onChange={e => set('sup', e.target.value)}>{db.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
         <Field label={t('Tissu', 'القماش')}><Input value={f.fabric} onChange={e => set('fabric', e.target.value)} /></Field>
+        <Field label={t('Couleur', 'اللون')}><Input value={f.color} onChange={e => set('color', e.target.value)} placeholder={t('Bleu marine', 'أزرق داكن')} /></Field>
+        <Field label={t('Tailles disponibles', 'المقاسات المتوفرة')}><Input value={f.sizes} onChange={e => set('sizes', e.target.value)} placeholder="S, M, L, XL" /></Field>
         <Field label={t('Photo du produit', 'صورة المنتج')}>
           <div className="flex items-center gap-3">
             {file ? <img src={URL.createObjectURL(file)} alt="" className="h-12 w-12 rounded-lg object-cover ring-1 ring-zinc-200" /> : <span className="grid h-12 w-12 place-items-center rounded-lg bg-zinc-100 text-xl">📷</span>}
             <input type="file" accept="image/*" onChange={e => setFile(e.target.files[0] || null)} className="min-w-0 flex-1 text-xs file:me-2 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white" />
           </div>
         </Field>
+      </div>
+      <div className="mt-5 flex justify-end gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn onClick={save}><Icon n="check" s={15} />{t('Enregistrer', 'حفظ')}</Btn></div>
+    </Modal>
+  );
+}
+function EditAttrsModal({ p, onClose }) {
+  const { act, t } = useApp();
+  const [f, setF] = useState({ fabric: p.fabric, color: p.color, sizes: p.sizes });
+  const save = async () => {
+    const done = await act(() => must(sb.from('products').update({ fabric: f.fabric.trim() || null, color: f.color.trim() || null, sizes: f.sizes.trim() || null }).eq('id', p.id)), t('Produit mis à jour', 'تم تحديث المنتج'));
+    if (done) onClose();
+  };
+  return (
+    <Modal title={`${t('Détails', 'التفاصيل')} · ${p.name}`} onClose={onClose}>
+      <div className="grid gap-3">
+        <Field label={t('Tissu', 'القماش')}><Input value={f.fabric} onChange={e => setF({ ...f, fabric: e.target.value })} /></Field>
+        <Field label={t('Couleur', 'اللون')}><Input value={f.color} onChange={e => setF({ ...f, color: e.target.value })} /></Field>
+        <Field label={t('Tailles disponibles', 'المقاسات المتوفرة')}><Input value={f.sizes} onChange={e => setF({ ...f, sizes: e.target.value })} placeholder="S, M, L, XL" /></Field>
       </div>
       <div className="mt-5 flex justify-end gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn onClick={save}><Icon n="check" s={15} />{t('Enregistrer', 'حفظ')}</Btn></div>
     </Modal>
@@ -566,6 +586,7 @@ function StockView({ readonly }) {
   const [sel, setSel] = useState({});
   const [delta, setDelta] = useState(10);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(null);
   const rows = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar + p.sku).toLowerCase().includes(q.toLowerCase())));
   const totalValue = db.products.reduce((s, p) => s + p.stock * p.cost, 0);
   const lowCount = db.products.filter(p => p.stock <= p.reorder).length;
@@ -617,7 +638,7 @@ function StockView({ readonly }) {
                 <tr key={p.id} className="transition hover:bg-zinc-50">
                   {!readonly && <td className="px-4 py-3"><input type="checkbox" checked={!!sel[p.id]} onChange={e => setSel({ ...sel, [p.id]: e.target.checked })} /></td>}
                   <td className="px-4 py-3 font-mono text-xs">{p.sku}</td>
-                  <td className="px-4 py-3"><div className="flex items-center gap-2.5"><PhotoButton p={p} readonly={readonly} /><div><div className="font-medium">{pn(p)}</div><div className="text-xs text-zinc-500">{p.fabric} · {p.color}</div></div></div></td>
+                  <td className="px-4 py-3"><div className="flex items-center gap-2.5"><PhotoButton p={p} readonly={readonly} /><div><div className="font-medium">{pn(p)}</div>{readonly ? <div className="text-xs text-zinc-500">{[p.fabric, p.color, p.sizes].filter(Boolean).join(' · ') || '—'}</div> : <button onClick={() => setEditing(p)} title={t('Modifier tissu, couleur, tailles', 'تعديل القماش واللون والمقاسات')} className="text-start text-xs text-zinc-500 underline decoration-dotted hover:text-zinc-900">{[p.fabric, p.color, p.sizes].filter(Boolean).join(' · ') || t('+ couleur / tailles', '+ لون / مقاسات')}</button>}</div></div></td>
                   <td className="px-4 py-3 text-zinc-600">{lang === 'ar' ? CAT_AR[p.cat] : p.cat}</td>
                   <td className="px-4 py-3">{readonly ? <span className="tabular font-semibold">{p.stock}</span> : <NumInput value={p.stock} onCommit={v => setStock(p.id, v)} className="tabular w-20 rounded-lg border border-zinc-200 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-zinc-900/10" />}</td>
                   <td className="tabular px-4 py-3 text-zinc-500">{p.reorder}</td>
@@ -631,6 +652,7 @@ function StockView({ readonly }) {
         </div>
       </Card>
       {adding && <AddProductModal onClose={() => setAdding(false)} />}
+      {editing && <EditAttrsModal p={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }
@@ -1136,6 +1158,7 @@ function Storefront() {
             <Thumb p={p} cls="h-44 w-full transition group-hover:scale-105" txt="text-7xl" />
             <div className="p-4">
               <div className="text-[11px] uppercase tracking-wider text-zinc-400">{lang === 'ar' ? CAT_AR[p.cat] : p.cat} · {p.color}</div>
+              {p.sizes && <div className="mt-0.5 flex flex-wrap gap-1">{p.sizes.split(',').map(z => z.trim()).filter(Boolean).map(z => <span key={z} className="rounded border border-zinc-200 px-1.5 text-[10px] text-zinc-600">{z}</span>)}</div>}
               <div className="mt-0.5 truncate font-semibold">{pn(p)}</div>
               <div className="mt-2 flex items-center justify-between">
                 <span className="tabular font-bold">{money(p.price)}</span>
