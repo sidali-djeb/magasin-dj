@@ -103,6 +103,7 @@ const errText = (e, t) => {
   const m = String((e && (e.message || e.details)) || e);
   const k = Object.keys(ERR).find(x => m.includes(x));
   if (k) return t(ERR[k][0], ERR[k][1]);
+  if (/foreign key|violates/i.test(m)) return t('Suppression impossible : cet élément est utilisé ailleurs (commandes, ventes…). Désactivez-le plutôt.', 'لا يمكن الحذف: العنصر مستخدم في مكان آخر. عطّله بدلاً من ذلك.');
   if (/duplicate key/i.test(m)) return t('Cette valeur existe déjà', 'هذه القيمة موجودة بالفعل');
   if (/row-level security|permission denied/i.test(m)) return t('Action non autorisée pour votre rôle', 'إجراء غير مسموح لدورك');
   if (/Failed to fetch|NetworkError/i.test(m)) return t('Connexion au serveur impossible', 'تعذر الاتصال بالخادم');
@@ -561,21 +562,38 @@ function AddProductModal({ onClose }) {
     </Modal>
   );
 }
-function EditAttrsModal({ p, onClose }) {
-  const { act, t } = useApp();
-  const [f, setF] = useState({ fabric: p.fabric, color: p.color, sizes: p.sizes });
+function EditProductModal({ p, onClose }) {
+  const { db, act, t, toast } = useApp();
+  const [f, setF] = useState({ name: p.name, ar: p.ar === p.name ? '' : p.ar, sku: p.sku, cat: p.cat, price: p.price, cost: p.cost, reorder: p.reorder, sup: p.sup || '', fabric: p.fabric, color: p.color, sizes: p.sizes, emoji: p.emoji });
+  const set = (k, v) => setF(x => ({ ...x, [k]: v }));
   const save = async () => {
-    const done = await act(() => must(sb.from('products').update({ fabric: f.fabric.trim() || null, color: f.color.trim() || null, sizes: f.sizes.trim() || null }).eq('id', p.id)), t('Produit mis à jour', 'تم تحديث المنتج'));
+    if (!f.name.trim() || !f.sku.trim()) { toast(t('Nom et SKU requis', 'الاسم والرمز مطلوبان'), 'err'); return; }
+    const done = await act(() => must(sb.from('products').update({ name: f.name.trim(), name_ar: f.ar.trim() || null, sku: f.sku.trim().toUpperCase(), category: CAT_TO[f.cat], price: +f.price || 0, cost: +f.cost || 0, reorder_level: Math.max(0, Math.floor(+f.reorder) || 0), supplier_id: f.sup || null, fabric: f.fabric.trim() || null, color: f.color.trim() || null, sizes: f.sizes.trim() || null, emoji: f.emoji.trim() || '🏷️' }).eq('id', p.id)), t('Produit mis à jour', 'تم تحديث المنتج'));
+    if (done) onClose();
+  };
+  const archive = async () => {
+    if (!confirm(t('Retirer ce produit du catalogue ? Les ventes passées sont conservées.', 'إزالة هذا المنتج من الكتالوج؟ المبيعات السابقة محفوظة.'))) return;
+    const done = await act(() => must(sb.from('products').update({ active: false }).eq('id', p.id)), t('Produit retiré du catalogue', 'تمت إزالة المنتج'));
     if (done) onClose();
   };
   return (
-    <Modal title={`${t('Détails', 'التفاصيل')} · ${p.name}`} onClose={onClose}>
-      <div className="grid gap-3">
-        <Field label={t('Tissu', 'القماش')}><Input value={f.fabric} onChange={e => setF({ ...f, fabric: e.target.value })} /></Field>
-        <Field label={t('Couleur', 'اللون')}><Input value={f.color} onChange={e => setF({ ...f, color: e.target.value })} /></Field>
-        <Field label={t('Tailles disponibles', 'المقاسات المتوفرة')}><Input value={f.sizes} onChange={e => setF({ ...f, sizes: e.target.value })} placeholder="S, M, L, XL" /></Field>
+    <Modal title={`${t('Modifier', 'تعديل')} · ${p.name}`} onClose={onClose} wide>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label={t('Nom', 'الاسم')}><Input value={f.name} onChange={e => set('name', e.target.value)} /></Field>
+        <Field label={t('Nom (arabe)', 'الاسم بالعربية')}><Input value={f.ar} onChange={e => set('ar', e.target.value)} dir="rtl" /></Field>
+        <Field label="SKU"><Input value={f.sku} onChange={e => set('sku', e.target.value)} /></Field>
+        <Field label={t('Catégorie', 'الفئة')}><Select value={f.cat} onChange={e => set('cat', e.target.value)}>{CATS.map(c => <option key={c}>{c}</option>)}</Select></Field>
+        <Field label={t('Prix de vente (DA)', 'سعر البيع (د.ج)')}><Input type="number" value={f.price} onChange={e => set('price', e.target.value)} /></Field>
+        <Field label={t("Coût d'achat (DA)", 'تكلفة الشراء (د.ج)')}><Input type="number" value={f.cost} onChange={e => set('cost', e.target.value)} /></Field>
+        <Field label={t('Seuil de réassort', 'حد إعادة التخزين')}><Input type="number" value={f.reorder} onChange={e => set('reorder', e.target.value)} /></Field>
+        <Field label={t('Fournisseur', 'المورد')}><Select value={f.sup} onChange={e => set('sup', e.target.value)}><option value="">—</option>{db.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
+        <Field label={t('Tissu', 'القماش')}><Input value={f.fabric} onChange={e => set('fabric', e.target.value)} /></Field>
+        <Field label={t('Couleur', 'اللون')}><Input value={f.color} onChange={e => set('color', e.target.value)} /></Field>
+        <Field label={t('Tailles disponibles', 'المقاسات المتوفرة')}><Input value={f.sizes} onChange={e => set('sizes', e.target.value)} placeholder="S, M, L, XL" /></Field>
+        <Field label={t('Emoji (si pas de photo)', 'رمز (عند غياب الصورة)')}><Input value={f.emoji} onChange={e => set('emoji', e.target.value)} /></Field>
       </div>
-      <div className="mt-5 flex justify-end gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn onClick={save}><Icon n="check" s={15} />{t('Enregistrer', 'حفظ')}</Btn></div>
+      <p className="mt-3 text-xs text-zinc-500">{t('Le stock se règle dans le tableau (colonne Stock) ; la photo avec la vignette 📷.', 'يُضبط المخزون في الجدول، والصورة عبر أيقونة 📷.')}</p>
+      <div className="mt-5 flex flex-wrap justify-between gap-2"><Btn v="danger" onClick={archive}>{t('Retirer du catalogue', 'إزالة من الكتالوج')}</Btn><div className="flex gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn onClick={save}><Icon n="check" s={15} />{t('Enregistrer', 'حفظ')}</Btn></div></div>
     </Modal>
   );
 }
@@ -638,7 +656,7 @@ function StockView({ readonly }) {
                 <tr key={p.id} className="transition hover:bg-zinc-50">
                   {!readonly && <td className="px-4 py-3"><input type="checkbox" checked={!!sel[p.id]} onChange={e => setSel({ ...sel, [p.id]: e.target.checked })} /></td>}
                   <td className="px-4 py-3 font-mono text-xs">{p.sku}</td>
-                  <td className="px-4 py-3"><div className="flex items-center gap-2.5"><PhotoButton p={p} readonly={readonly} /><div><div className="font-medium">{pn(p)}</div>{readonly ? <div className="text-xs text-zinc-500">{[p.fabric, p.color, p.sizes].filter(Boolean).join(' · ') || '—'}</div> : <button onClick={() => setEditing(p)} title={t('Modifier tissu, couleur, tailles', 'تعديل القماش واللون والمقاسات')} className="text-start text-xs text-zinc-500 underline decoration-dotted hover:text-zinc-900">{[p.fabric, p.color, p.sizes].filter(Boolean).join(' · ') || t('+ couleur / tailles', '+ لون / مقاسات')}</button>}</div></div></td>
+                  <td className="px-4 py-3"><div className="flex items-center gap-2.5"><PhotoButton p={p} readonly={readonly} /><div>{readonly ? <div className="font-medium">{pn(p)}</div> : <button onClick={() => setEditing(p)} className="text-start font-medium hover:underline">{pn(p)}</button>}{readonly ? <div className="text-xs text-zinc-500">{[p.fabric, p.color, p.sizes].filter(Boolean).join(' · ') || '—'}</div> : <button onClick={() => setEditing(p)} title={t('Modifier tissu, couleur, tailles', 'تعديل القماش واللون والمقاسات')} className="text-start text-xs text-zinc-500 underline decoration-dotted hover:text-zinc-900">{[p.fabric, p.color, p.sizes].filter(Boolean).join(' · ') || t('+ couleur / tailles', '+ لون / مقاسات')}</button>}</div></div></td>
                   <td className="px-4 py-3 text-zinc-600">{lang === 'ar' ? CAT_AR[p.cat] : p.cat}</td>
                   <td className="px-4 py-3">{readonly ? <span className="tabular font-semibold">{p.stock}</span> : <NumInput value={p.stock} onCommit={v => setStock(p.id, v)} className="tabular w-20 rounded-lg border border-zinc-200 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-zinc-900/10" />}</td>
                   <td className="tabular px-4 py-3 text-zinc-500">{p.reorder}</td>
@@ -652,7 +670,7 @@ function StockView({ readonly }) {
         </div>
       </Card>
       {adding && <AddProductModal onClose={() => setAdding(false)} />}
-      {editing && <EditAttrsModal p={editing} onClose={() => setEditing(null)} />}
+      {editing && <EditProductModal p={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }
@@ -794,9 +812,36 @@ function Achats() {
 }
 
 /* ───────────────────────── Fournisseurs ───────────────────────── */
+function EditSupplierModal({ s, onClose }) {
+  const { act, t } = useApp();
+  const [f, setF] = useState({ name: s.name, contact: s.contact, email: s.email, city: s.city, leadDays: s.leadDays });
+  const save = async () => {
+    if (!f.name.trim()) return;
+    const done = await act(() => must(sb.from('suppliers').update({ name: f.name.trim(), contact_name: f.contact.trim() || null, email: f.email.trim() || null, city: f.city.trim() || null, lead_days: Math.max(1, Math.floor(+f.leadDays) || 5) }).eq('id', s.id)), t('Fournisseur mis à jour', 'تم تحديث المورد'));
+    if (done) onClose();
+  };
+  const del = async () => {
+    if (!confirm(t('Supprimer ce fournisseur ? Impossible s’il a des commandes.', 'حذف هذا المورد؟ غير ممكن إذا كانت له طلبات.'))) return;
+    const done = await act(() => must(sb.from('suppliers').delete().eq('id', s.id)), t('Fournisseur supprimé', 'تم حذف المورد'));
+    if (done) onClose();
+  };
+  return (
+    <Modal title={`${t('Modifier', 'تعديل')} · ${s.name}`} onClose={onClose}>
+      <div className="grid gap-3">
+        <Field label={t('Nom', 'الاسم')}><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
+        <Field label={t('Contact', 'جهة الاتصال')}><Input value={f.contact} onChange={e => setF({ ...f, contact: e.target.value })} /></Field>
+        <Field label="Email"><Input value={f.email} onChange={e => setF({ ...f, email: e.target.value })} dir="ltr" /></Field>
+        <Field label={t('Ville', 'المدينة')}><Input value={f.city} onChange={e => setF({ ...f, city: e.target.value })} /></Field>
+        <Field label={t('Délai (jours)', 'المهلة (أيام)')}><Input type="number" min="1" value={f.leadDays} onChange={e => setF({ ...f, leadDays: e.target.value })} /></Field>
+      </div>
+      <div className="mt-5 flex flex-wrap justify-between gap-2"><Btn v="danger" onClick={del}>{t('Supprimer', 'حذف')}</Btn><div className="flex gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn onClick={save}><Icon n="check" s={15} />{t('Enregistrer', 'حفظ')}</Btn></div></div>
+    </Modal>
+  );
+}
 function Fournisseurs() {
   const { db, act, t, pn, money, toast, lang } = useApp();
   const [adding, setAdding] = useState(false);
+  const [editS, setEditS] = useState(null);
   const [f, setF] = useState({ name: '', contact: '', email: '', city: '', leadDays: 5 });
   const save = async () => {
     if (!f.name.trim()) { toast(t('Nom requis', 'الاسم مطلوب'), 'err'); return; }
@@ -816,6 +861,7 @@ function Fournisseurs() {
           <Field label={t('Délai (jours)', 'المهلة (أيام)')}><Input type="number" value={f.leadDays} onChange={e => setF({ ...f, leadDays: e.target.value })} /></Field>
         </div><div className="mt-4 flex justify-end"><Btn onClick={save}>{t('Ajouter', 'إضافة')}</Btn></div></Card>
       )}
+      {editS && <EditSupplierModal s={editS} onClose={() => setEditS(null)} />}
       <div className="grid gap-4 lg:grid-cols-2">
         {db.suppliers.map(s => {
           const pos = db.purchases.filter(p => p.supplierId === s.id);
@@ -825,7 +871,7 @@ function Fournisseurs() {
             <Card key={s.id} className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <div><div className="font-semibold">{s.name}</div><div className="text-xs text-zinc-500">{s.contact} · {s.city} · {s.email}</div></div>
-                <Badge tone="amber">★ {s.rating || '—'}</Badge>
+                <div className="flex items-center gap-2"><Badge tone="amber">★ {s.rating || '—'}</Badge><Btn v="soft" className="!px-2.5 !py-1 text-xs" onClick={() => setEditS(s)}><Icon n="edit" s={13} />{t('Modifier', 'تعديل')}</Btn></div>
               </div>
               <div className="mt-4 grid grid-cols-3 gap-3 text-center">
                 <div className="rounded-xl bg-zinc-50 p-3"><div className="text-[11px] text-zinc-500">{t('Délai', 'المهلة')}</div><label className="mt-1 flex items-center justify-center gap-1"><NumInput value={s.leadDays} min={1} onCommit={v => act(() => must(sb.from('suppliers').update({ lead_days: v }).eq('id', s.id)), t('Délai mis à jour', 'تم تحديث المهلة'))} className="tabular w-12 rounded-md border border-zinc-200 bg-white px-1 text-center text-sm" /><span className="text-xs">j</span></label></div>
@@ -940,11 +986,37 @@ function Fidelite() {
 }
 
 /* ───────────────────────── Bons d'achat ───────────────────────── */
+function EditVoucherModal({ v, onClose }) {
+  const { act, t } = useApp();
+  const [f, setF] = useState({ value: v.value, minTotal: v.minTotal, expires: v.expires, limit: v.limit });
+  const save = async () => {
+    if (+f.value <= 0 || (v.type === 'percent' && +f.value > 100)) return;
+    const done = await act(() => must(sb.from('vouchers').update({ value: +f.value, min_total: +f.minTotal || 0, expires_at: f.expires, usage_limit: Math.max(v.used || 1, Math.floor(+f.limit) || 1) }).eq('id', v.id)), t('Bon mis à jour', 'تم تحديث القسيمة'));
+    if (done) onClose();
+  };
+  const del = async () => {
+    if (!confirm(t('Supprimer ce bon ?', 'حذف هذه القسيمة؟'))) return;
+    const done = await act(() => must(sb.from('vouchers').delete().eq('id', v.id)), t('Bon supprimé', 'تم حذف القسيمة'));
+    if (done) onClose();
+  };
+  return (
+    <Modal title={`${t('Modifier', 'تعديل')} · ${v.code}`} onClose={onClose}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label={v.type === 'percent' ? t('Valeur (%)', 'القيمة (%)') : t('Valeur (DA)', 'القيمة (د.ج)')}><Input type="number" value={f.value} onChange={e => setF({ ...f, value: e.target.value })} /></Field>
+        <Field label={t('Minimum d’achat (DA)', 'الحد الأدنى للشراء (د.ج)')}><Input type="number" value={f.minTotal} onChange={e => setF({ ...f, minTotal: e.target.value })} /></Field>
+        <Field label={t('Expire le', 'ينتهي في')}><Input type="date" value={f.expires} onChange={e => setF({ ...f, expires: e.target.value })} /></Field>
+        <Field label={t('Limite d’utilisations', 'حد الاستعمال')}><Input type="number" min="1" value={f.limit} onChange={e => setF({ ...f, limit: e.target.value })} /></Field>
+      </div>
+      <div className="mt-5 flex flex-wrap justify-between gap-2"><Btn v="danger" onClick={del} disabled={v.used > 0} title={v.used > 0 ? t('Déjà utilisé : désactivez-le', 'مستعمل: عطّله') : ''}>{t('Supprimer', 'حذف')}</Btn><div className="flex gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn onClick={save}><Icon n="check" s={15} />{t('Enregistrer', 'حفظ')}</Btn></div></div>
+    </Modal>
+  );
+}
 function Bons() {
   const { db, act, t, money, toast } = useApp();
   const newCode = () => 'BON-' + Math.random().toString(36).slice(2, 6).toUpperCase();
   const [f, setF] = useState({ code: newCode(), kind: 'bon', type: 'fixed', value: 2000, minTotal: 0, expires: addDays(90), limit: 1 });
   const [show, setShow] = useState(null);
+  const [editV, setEditV] = useState(null);
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
   const create = async () => {
     const code = f.code.trim().toUpperCase();
@@ -989,6 +1061,7 @@ function Bons() {
                 <div className="mt-3 flex items-center justify-between text-xs text-zinc-500"><span>{t('Min.', 'الحد الأدنى')} {money(v.minTotal)}</span><span className="tabular">{t('Exp.', 'ينتهي')} {v.expires}</span></div>
                 <div className="mt-4 flex gap-2">
                   <Btn v="ghost" className="flex-1" onClick={() => setShow(v)}><Icon n="eye" s={14} />{t('Voir / imprimer', 'عرض / طباعة')}</Btn>
+                  <Btn v="soft" onClick={() => setEditV(v)}><Icon n="edit" s={14} />{t('Modifier', 'تعديل')}</Btn>
                   <Btn v="soft" onClick={() => toggle(v.id)}>{v.active ? t('Désactiver', 'تعطيل') : t('Activer', 'تفعيل')}</Btn>
                 </div>
               </Card>
@@ -996,6 +1069,7 @@ function Bons() {
           })}
         </div>
       </div>
+      {editV && <EditVoucherModal v={editV} onClose={() => setEditV(null)} />}
       {show && <Modal title={t('Aperçu du bon', 'معاينة القسيمة')} onClose={() => setShow(null)}><VoucherCard v={show} /><p className="mt-4 text-center text-xs text-zinc-500">{t('Pour impression : copiez le code et collez-le dans un document.', 'للطباعة: انسخ الرمز والصقه في مستند.')}</p></Modal>}
     </div>
   );
