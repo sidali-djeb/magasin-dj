@@ -982,15 +982,28 @@ function Achats() {
     if (!p) return;
     setLines(l => [...l, { pid: p.id, vid: pick, qty: Math.max(1, Number(pq) || 1), cost: p.cost }]);
   };
+  const mailPO = (supplierId, ref, exp, ls) => {
+    const sup = db.suppliers.find(x => x.id === supplierId);
+    if (!sup || !sup.email) { toast(t('Ce fournisseur n’a pas d’email : ajoutez-le dans Fournisseurs', 'لا يوجد بريد لهذا المورد'), 'err'); return; }
+    const rows = ls.map(l => { const p = db.products.find(x => x.id === l.pid); const lab = p ? vLabelOf(p, l.vid, 'fr') : ''; return `- ${p ? p.name : '?'}${lab ? ' (' + lab + ')' : ''} : ${l.qty} x ${l.cost} DA`; }).join('\n');
+    const total = ls.reduce((a, l) => a + l.qty * l.cost, 0);
+    const subject = `Bon de commande ${ref || ''} - Magasin`.replace('  ', ' ');
+    const body = `Bonjour ${sup.contact || sup.name},\n\nVoici notre bon de commande${ref ? ' ' + ref : ''} :\n\n${rows}\n\nTotal : ${total} DA\nLivraison souhaitée : ${exp || '—'}\n\nMerci de confirmer la réception de cette commande.\n\nCordialement,\nMagasin`;
+    window.location.href = `mailto:${encodeURIComponent(sup.email).replace('%40', '@')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
   const createPO = async status => {
     if (!lines.length) { toast(t('Ajoutez au moins une ligne', 'أضف سطراً واحداً على الأقل'), 'err'); return; }
     if (!supId) { toast(t('Choisissez un fournisseur', 'اختر موردا'), 'err'); return; }
     const done = await act(() => must(sb.rpc('create_purchase_order', { p_supplier_id: supId, p_expected: expected || null, p_items: lines.map(l => ({ variant_id: l.vid, qty: l.qty, unit_cost: l.cost })), p_send: status !== 'Brouillon' })),
       status === 'Brouillon' ? t('Brouillon enregistré', 'تم حفظ المسودة') : t('Bon de commande envoyé au fournisseur', 'تم إرسال طلب الشراء إلى المورد'));
-    if (done) setLines([]);
+    if (done) { if (status !== 'Brouillon') mailPO(supId, '', expected, lines); setLines([]); }
   };
   const createRestock = (supplierId, items) => act(() => must(sb.rpc('create_purchase_order', { p_supplier_id: supplierId, p_expected: null, p_items: items.flatMap(p => { const per = Math.ceil(Math.max(p.reorder * 2 - p.stock, p.reorder) / Math.max(1, p.variants.length)); return p.variants.map(v => ({ variant_id: v.id, qty: per, unit_cost: p.cost })); }), p_send: false })), t('Brouillon de réassort créé', 'تم إنشاء مسودة إعادة التخزين'));
-  const send = id => act(() => must(sb.rpc('set_po_status', { p_po_id: id, p_status: 'envoyee' })), t('Bon de commande envoyé au fournisseur', 'تم إرسال طلب الشراء إلى المورد'));
+  const send = async id => {
+    const po = db.purchases.find(x => x.id === id);
+    const done = await act(() => must(sb.rpc('set_po_status', { p_po_id: id, p_status: 'envoyee' })), t('Bon de commande envoyé au fournisseur', 'تم إرسال طلب الشراء إلى المورد'));
+    if (done && po) mailPO(po.supplierId, po.ref, po.expected, po.lines);
+  };
   const low = db.products.filter(p => p.stock <= p.reorder);
   const groups = db.suppliers.map(s => ({ s, items: low.filter(p => p.sup === s.id) })).filter(g => g.items.length);
   const openPOs = db.purchases.filter(p => ['Envoyée', 'Confirmée', 'Expédiée', 'Reçue partiellement'].includes(p.status)).length;
@@ -1060,6 +1073,7 @@ function Achats() {
                     <td className="tabular px-4 py-3 font-medium">{money(po.lines.reduce((s, l) => s + lineTotal(l), 0))}</td>
                     <td className="px-4 py-3"><StatusBadge status={po.status} /></td>
                     <td className="px-4 py-3 text-end">
+                      <Btn v="ghost" className="me-1 !px-2.5 !py-1 text-xs" onClick={() => mailPO(po.supplierId, po.ref, po.expected, po.lines)}><Icon n="send" s={13} />Email</Btn>
                       {po.status === 'Brouillon' && <Btn v="soft" onClick={() => send(po.id)}><Icon n="send" s={13} />{t('Envoyer', 'إرسال')}</Btn>}
                       {['Envoyée', 'Confirmée', 'Expédiée', 'Reçue partiellement'].includes(po.status) && <Btn v="accent" onClick={() => setRecv(po)}><Icon n="check" s={13} />{t('Réceptionner', 'استلام')}</Btn>}
                     </td>
