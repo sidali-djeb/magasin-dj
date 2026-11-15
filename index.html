@@ -126,10 +126,10 @@ async function loadAll(role) {
     rows(sb.from('loyalty_rules').select('*').eq('id', 1)),
     rows(role === 'client' ? sb.from('storefront_variants').select('*') : sb.from('product_variants').select('*').eq('active', true).order('created_at')),
     role === 'admin' ? (async () => { const r = await sb.rpc('admin_list_users'); return r.data || []; })() : Promise.resolve([]),
-    role === 'admin' ? (async () => { return (await sb.from('stock_movements').select('variant_id,product_id,delta,ref_id,created_at').eq('reason', 'purchase_receipt').order('created_at', { ascending: true }).limit(2000)).data || []; })() : Promise.resolve([]),
+    role === 'admin' ? (async () => { return (await sb.from('stock_movements').select('variant_id,product_id,delta,ref_id,created_at,note,created_by').eq('reason', 'purchase_receipt').order('created_at', { ascending: true }).limit(2000)).data || []; })() : Promise.resolve([]),
   ]);
   const rcMap = new Map();
-  mvs.forEach(m => { const k = m.ref_id + '|' + m.created_at; if (!rcMap.has(k)) rcMap.set(k, { id: k, poId: m.ref_id, at: m.created_at, lines: [] }); rcMap.get(k).lines.push({ vid: m.variant_id, pid: m.product_id, qty: m.delta }); });
+  mvs.forEach(m => { const k = m.ref_id + '|' + m.created_at; if (!rcMap.has(k)) rcMap.set(k, { id: k, poId: m.ref_id, at: m.created_at, note: m.note || '', by: m.created_by, lines: [] }); rcMap.get(k).lines.push({ vid: m.variant_id, pid: m.product_id, qty: m.delta }); });
   const receipts = [...rcMap.values()].map((r, i) => ({ ...r, no: 'BR-' + String(i + 1).padStart(4, '0') })).reverse();
   const staffName = Object.fromEntries(staff.map(u => [u.id, u.full_name || (u.email || '').split('@')[0]]));
   const pPrice = Object.fromEntries(prods.map(x => [x.id, Number(x.price)]));
@@ -1001,11 +1001,13 @@ function StockView({ readonly }) {
 function ReceiveModal({ po, onClose }) {
   const { db, act, toast, t, pn, lang } = useApp();
   const [q, setQ] = useState(() => po.lines.map(l => l.qty - l.received));
+  const staffList = [...(db.staff || [])].sort((a, b) => (a.role === 'vendeur' ? 0 : 1) - (b.role === 'vendeur' ? 0 : 1));
+  const [receiver, setReceiver] = useState(() => (staffList.find(u => u.role === 'vendeur') || {}).name || '');
   const confirm = async () => {
     const items = po.lines.map((l, i) => ({ item_id: l.id, qty: Math.min(l.qty - l.received, Math.max(0, Math.floor(Number(q[i]) || 0))) })).filter(x => x.qty > 0);
     if (!items.length) { toast(t('Aucune quantité à réceptionner', 'لا توجد كمية للاستلام'), 'err'); return; }
     const added = items.reduce((a, x) => a + x.qty, 0);
-    const done = await act(() => must(sb.rpc('receive_purchase', { p_po_id: po.id, p_items: items })), t(`${added} unité(s) ajoutée(s) au stock`, `تمت إضافة ${added} وحدة إلى المخزون`));
+    const done = await act(() => must(sb.rpc('receive_purchase', { p_po_id: po.id, p_items: items, p_receiver: receiver || null })), t(`${added} unité(s) ajoutée(s) au stock`, `تمت إضافة ${added} وحدة إلى المخزون`));
     if (done) onClose();
   };
   return (
@@ -1021,6 +1023,7 @@ function ReceiveModal({ po, onClose }) {
           );
         })}
       </div>
+      <div className="mt-3"><Field label={t('Reçu par (vendeur)', 'استلم من طرف (البائع)')}><Select value={receiver} onChange={e => setReceiver(e.target.value)}><option value="">—</option>{staffList.map(u => <option key={u.id} value={u.name}>{u.name} · {u.role === 'admin' ? 'Admin' : t('Vendeur', 'بائع')}</option>)}</Select></Field></div>
       <div className="mt-5 flex justify-end gap-2"><Btn v="ghost" onClick={onClose}>{t('Annuler', 'إلغاء')}</Btn><Btn v="accent" onClick={confirm}><Icon n="check" s={15} />{t('Valider la réception', 'تأكيد الاستلام')}</Btn></div>
     </Modal>
   );
@@ -1503,9 +1506,16 @@ function AddClientModal({ onClose, onCreated, c }) {
     </Modal>
   );
 }
+function useFullscreen() {
+  const [on, setOn] = useState(!!document.fullscreenElement);
+  useEffect(() => { const f = () => setOn(!!document.fullscreenElement); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f); }, []);
+  const toggle = () => { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); } catch (e) {} };
+  return [on, toggle];
+}
 function POS() {
   const { db, t, pn, money, lang, quote, checkout, role } = useApp();
   const canPrice = role === 'admin';
+  const [fs, toggleFs] = useFullscreen();
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('Toutes');
   const [cart, setCart] = useState([]);
@@ -1538,7 +1548,7 @@ function POS() {
       {picking && <VariantPicker p={picking} onPick={v => { addV(picking, v); setPicking(null); }} onClose={() => setPicking(null)} />}
       {newClient && <AddClientModal onClose={() => setNewClient(false)} onCreated={id => { setClientId(id); setUsePts(0); }} />}
       <div className="xl:col-span-3">
-        <PageTitle title={t('Vente · Caisse', 'البيع · الصندوق')} sub={t('Encaissement rapide, stock déduit automatiquement', 'تسجيل سريع، والمخزون يُخصم تلقائياً')} />
+        <PageTitle title={t('Vente · Caisse', 'البيع · الصندوق')} sub={t('Encaissement rapide, stock déduit automatiquement', 'تسجيل سريع، والمخزون يُخصم تلقائياً')} right={<Btn v="ghost" onClick={toggleFs}><Icon n="globe" s={15} />{fs ? t('Quitter le plein écran', 'إنهاء ملء الشاشة') : t('Plein écran', 'ملء الشاشة')}</Btn>} />
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <div className="relative min-w-48 flex-1"><Icon n="search" s={15} className="absolute start-3 top-2.5 text-zinc-400" /><Input value={q} onChange={e => setQ(e.target.value)} placeholder={t('Nom ou SKU…', 'الاسم أو الرمز…')} className="ps-9" /></div>
           <div className="flex flex-wrap gap-1.5">{['Toutes', ...CATS].map(c => <button key={c} onClick={() => setCat(c)} className={`rounded-full px-3 py-1.5 text-xs font-medium ${cat === c ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{lang === 'ar' ? CAT_AR[c] : c}</button>)}</div>
@@ -1953,6 +1963,7 @@ function Inventaire() {
   const [q, setQ] = useState('');
   const [counts, setCounts] = useState({});
   const [onlyDiff, setOnlyDiff] = useState(false);
+  const [open, setOpen] = useState({});
   const norm = x => String(x || '').toLowerCase();
   const prods = db.products.filter(p => !q || norm(p.name + p.ar + p.sku).includes(norm(q)));
   const diffOf = v => { const c = counts[v.id]; return c === undefined || c === '' ? null : Math.max(0, Math.floor(Number(c) || 0)) - v.stock; };
@@ -1990,10 +2001,18 @@ function Inventaire() {
           {prods.map(p => {
             const vs = p.variants.filter(v => !onlyDiff || (diffOf(v) !== null && diffOf(v) !== 0));
             if (!vs.length) return null;
+            const nCount = p.variants.filter(v => diffOf(v) !== null).length;
+            const nDiff = p.variants.filter(v => diffOf(v) !== null && diffOf(v) !== 0).length;
+            const isOpen = !!open[p.id];
             return (
               <div key={p.id} className="p-3">
-                <div className="mb-1.5 flex items-center gap-2"><Thumb p={p} cls="h-8 w-8 rounded-lg" txt="text-sm" /><div className="min-w-0"><div className="truncate text-sm font-semibold">{pn(p)}</div><div className="font-mono text-[11px] text-zinc-500">{p.sku}</div></div></div>
-                <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+                <button onClick={() => setOpen({ ...open, [p.id]: !isOpen })} className="flex w-full items-center gap-3 rounded-2xl px-1 py-1 text-start hover:bg-zinc-50">
+                  <Thumb p={p} cls="h-12 w-12 rounded-xl" txt="text-xl" />
+                  <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{pn(p)}</div><div className="font-mono text-[11px] text-zinc-500">{p.sku} · {p.variants.length} {t('variantes', 'متغيرات')}</div></div>
+                  <div className="text-end text-xs"><div className="tabular text-zinc-500">{t('Stock', 'المخزون')} {p.stock}</div>{nCount > 0 && <div className={nDiff ? 'font-semibold text-amber-600' : 'text-emerald-600'}>{nCount} {t('compté(s)', 'معدود')}{nDiff ? ` · ${nDiff} ${t('écart(s)', 'فرق')}` : ''}</div>}</div>
+                  <span className="text-zinc-400">{isOpen ? '▴' : '▾'}</span>
+                </button>
+                {isOpen && <div className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
                   {vs.map(v => { const d = diffOf(v); const c = v.color ? parseColor(v.color) : null; return (
                     <div key={v.id} className={`flex items-center gap-2 rounded-2xl px-3 py-1.5 text-sm ${d ? 'bg-amber-50' : 'bg-zinc-50'}`}>
                       {c && <span className="inline-block h-3.5 w-3.5 shrink-0 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}
@@ -2002,7 +2021,7 @@ function Inventaire() {
                       <input type="number" min="0" value={counts[v.id] === undefined ? '' : counts[v.id]} onChange={e => setCounts({ ...counts, [v.id]: e.target.value })} placeholder="—" className="tabular w-16 rounded-full border border-zinc-200 bg-white px-2 py-1 text-center text-sm outline-none focus:ring-2 focus:ring-zinc-900/10" />
                       <span className={`tabular w-10 text-end text-xs font-semibold ${d > 0 ? 'text-emerald-600' : d < 0 ? 'text-rose-600' : 'text-zinc-300'}`}>{d === null ? '' : d > 0 ? '+' + d : d}</span>
                     </div>); })}
-                </div>
+                </div>}
               </div>
             );
           })}
@@ -2025,11 +2044,12 @@ function Receptions() {
       const cost = pl ? pl.cost : (p ? p.cost : 0);
       return { name: p ? p.name : '?', label: p ? vLabelOf(p, l.vid, 'fr') : '', qty: l.qty, cost };
     });
-    return { ...r, poRef: po ? po.ref : '—', supName: sup ? sup.name : '—', lines, qty: lines.reduce((a, l) => a + l.qty, 0), value: lines.reduce((a, l) => a + l.qty * l.cost, 0) };
+    const who = r.note || ((db.staff || []).find(u => u.id === r.by) || {}).name || '—';
+    return { ...r, who, poRef: po ? po.ref : '—', supName: sup ? sup.name : '—', lines, qty: lines.reduce((a, l) => a + l.qty, 0), value: lines.reduce((a, l) => a + l.qty * l.cost, 0) };
   });
   const print = r => {
     const body = r.lines.map(l => `<tr><td>${escH(l.name)}${l.label ? ' (' + escH(l.label) + ')' : ''}</td><td class="r">${l.qty}</td><td class="r">${l.cost}</td><td class="r">${l.qty * l.cost}</td></tr>`).join('');
-    printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>${r.no}</title><style>${A4_CSS}</style></head><body><h1>Bon de réception ${r.no}</h1><div class="muted">Magasin DJ · ${escH(r.at.slice(0, 10))}</div><h2>Fournisseur : ${escH(r.supName)} · Commande ${escH(r.poRef)}</h2><table><thead><tr><th>Article</th><th class="r">Qté reçue</th><th class="r">Coût unit. (DA)</th><th class="r">Total (DA)</th></tr></thead><tbody>${body}<tr><th>Total</th><th class="r">${r.qty}</th><th></th><th class="r">${r.value}</th></tr></tbody></table><p style="margin-top:40px">Signature : ____________________</p></body></html>`);
+    printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>${r.no}</title><style>${A4_CSS}</style></head><body><h1>Bon de réception ${r.no}</h1><div class="muted">Magasin DJ · ${escH(r.at.slice(0, 10))}</div><h2>Fournisseur : ${escH(r.supName)} · Commande ${escH(r.poRef)}</h2><div>Reçu par : <b>${escH(r.who)}</b></div><table><thead><tr><th>Article</th><th class="r">Qté reçue</th><th class="r">Coût unit. (DA)</th><th class="r">Total (DA)</th></tr></thead><tbody>${body}<tr><th>Total</th><th class="r">${r.qty}</th><th></th><th class="r">${r.value}</th></tr></tbody></table><p style="margin-top:40px">Signature : ____________________</p></body></html>`);
   };
   return (
     <div>
@@ -2038,7 +2058,7 @@ function Receptions() {
         {rows.map(r => (
           <Card key={r.id} className="p-4">
             <div className="flex items-start justify-between gap-2">
-              <div><div className="font-bold">{r.no}</div><div className="text-xs text-zinc-500">{r.at.slice(0, 10)} · {t('Commande', 'الطلب')} {r.poRef} · {r.supName}</div></div>
+              <div><div className="font-bold">{r.no}</div><div className="text-xs text-zinc-500">{r.at.slice(0, 10)} · {t('Commande', 'الطلب')} {r.poRef} · {r.supName}</div><div className="mt-0.5 text-xs"><span className="text-zinc-500">{t('Reçu par', 'استلم من طرف')} :</span> <span className="font-semibold">{r.who}</span></div></div>
               <Btn v="ghost" className="!px-3 !py-1 text-xs" onClick={() => print(r)}><Icon n="receipt" s={13} />{t('Imprimer', 'طباعة')}</Btn>
             </div>
             <div className="mt-3 space-y-1">
