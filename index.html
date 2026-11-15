@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Magasin DJ — ERP & Site Web</title>
-<meta name="description" content="Magasin DJ : gestion de stock, ventes, achats, fidélité et bons d'achat, avec site web officiel." />
+<title>Djeb's Official — Gestion</title>
+<meta name="description" content="Djeb's Official : gestion de stock, ventes, achats, fidélité et bons d'achat." />
 <meta name="theme-color" content="#e6e6e8" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2318181b'/%3E%3Ctext x='16' y='22' font-family='Arial,sans-serif' font-size='15' font-weight='800' text-anchor='middle' fill='white'%3EDJ%3C/text%3E%3C/svg%3E" />
 <!-- Version Tailwind épinglée : le rendu ne change pas si la CDN publie une nouvelle version -->
@@ -80,6 +80,9 @@ const useApp = () => useContext(Ctx);
 
 /* ───────────────────────── Utilitaires ───────────────────────── */
 const KEY = 'magasin-dj-erp-v1';
+const LOGO_EMB = 'data:image/jpeg;base64,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';
+const LOGO_WORD = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCACYAWgDASIAAhEBAxEB/8QAHAABAAIDAQEBAAAAAAAAAAAAAAYHAwQFAgEI/8QAPxAAAQQBAgIHBAgFAwQDAAAAAQACAwQFBhESIQciMUFRYXETFIHBIzJCUpGhsdEVM0NiciSCkhY0U/AXY8L/xAAZAQEAAwEBAAAAAAAAAAAAAAAAAgMEAQX/xAAkEQADAAIDAAIDAAMBAAAAAAAAAQIDERIhMSJBBBNRQlJxkf/aAAwDAQACEQMRAD8AsJEReQbwiIgCIiAIiIAiIgCIvjnNY0uc4NaO0k7AID6i4eQ1rp7GktmyUb3j7EP0h/JRu50tUWEtp4yeXbsdK8MH4DdTWO34iLuV9lgIqnsdLGXedoKNSId3FxOP6rxHrfW97/tYS7fs9lT3H5hWfor7I/tkttFV8WW6S5Du2pKf8qzAtyPNdJEPOTEMlHnCPkVz9T/qH7F/CxEUAGvs/RG+V0vK1o7XRhzf1BXUxvSRp6+QyWaSlJ4Tt5f8hyUXjpHVckrReIZ4rETZYJWSxu7HMcCD8QvarJhERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAEREAREQBERAFrX8jSxdY2b1mOvEPtPO2/oO9RvVuvKun+KnUDbN/bm3fqxf5efkqnyeWvZi0bN+y+eQ9nEeTfIDsCvx4XXb8KryJdIn2a6VgC6LC1d+4Tzj9G/uoNks/l80/8A116acE8o99m/Bo5Lr6c0Dlc6G2JR7lTP9WRvWcP7W/NWdg9H4bAtDq1YSTgc55us8+nh8Fc6x4/PSCV36Vbh9BZ7LgSCt7rAf6ljq7+g7SpnjOirF1wH5GzNbf3tZ9Gz9yp2viorPbLFilHNo6bwuNA90xlaMjsdwAu/E810hyGw5DwCIqm2/SxLQRRXVmu6ent6tdrbV/b+Xv1Y/wDI/JQNnSTqVtr2zrET27/yjEOH08fzVk4apbIPJK6LnXKyemMLl2n3zHwucf6jW8L/AMQtLSmr6mp67mtb7C5EN5YSd+Xi094UhUHuGS6pFd29G5zS8jr2lr8skQ5uqv5kj07HfquxpbXdXOSCjeYKeRHLgdybIR27b9h8ipYoL0haTZaqvzlBns7lcccoZy9o0fa/yCsVK+q/9INOe5J0iiegdVnP491W2/e9VA4j/wCRnc717ipYq6ly9MmmmtoIiKJ0IiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAonr3VZ0/j21ajwL9kHhPb7Nve718FLFRmt7r72r8g95JEUnsWDwDeX7q7DCquyvJWl0caKKxetNiiY+eeZ+wA5ue4q1NJ9HdbGNju5drbFztbF2si/c/ks+gNJR4fHsyVuMG9YaHDcfymHsA8z3qYqeXNvqSOPHrthERZi4IiIAoZrrWowkTsdj3h1+RvWeOfsAf/wBLf1pquPTeO4YS11+cEQsP2R94+QVKzTSWJnzzSOkkkcXPe47knxWnDi38mU5L10jy97pHukkcXPcd3OcdySp9ozo99/jZks0xza7ucVfsMg8XeA8u9e9BaG95MeZysX0I61eBw+v/AHOHh4DvVnqebNr4ycx4/tmCvQp1AwV6kMPANm8EYGwWdEWPZeEc0PaWOALXDYg94RfR2oCjsXbOmddbsJEUNp0LwD2sLttvw/RXivzzmrAs5q9ZaeUlh7gR/kVf2PkM2NqyntfCxx+LQtOddJlOJ+ozoiLMXBERAEREAREQBEJ2BJOwHeoDqXpNiozvqYaJlmRh2dO87sB8AB2+qlMOnpHKpT6T5FXGF6VuOdsOaqMjY47e3g32b5lp7vRWLFLHPEyaGRskbwHNc07hwPeF2oqfTk0q8PSISGgucQABuSe5QKt0nQP1NJSmiYMc6T2cVgfWHdufEErkw68OukvSeoiKJ0IiIAiIgCIiAIiIAiIgCIiAKntd4Z+J1b7/ACRk07krZQ7blvuOJv8A74q4Vgu0auRrOrXIGTwv7WPG4VmO+DIXPJGaN7JI2vjILHAFpHYR3L6tXHY+HF1G1KzpDCz6jZH8XAPAE89ltKtk0EREAXPzuarYDFS37R5NGzGb85HdwC3pZGQxPlleGRsaXOcTyAHaVSOstTyakyxcxxFKAltdniPvHzKtxY+bIXfFHJyuUtZnIy3rknHLKd/Jo7gPIKW6B0WcrKzK5KMilGd4oyP5zh3/AOP6rQ0TpCTUV33iy1zcfA76R3Z7Q/dHzVzRxshibFExrI2Dha1o2AHgr8uTiuMlWON9s9AADYDYDuCIixmgIiIAuPqzLDDaauW+LhkLPZxeb3ch+/wXYVR9JWom5PKtxlaTirUyeMjsdJ3/AIdn4qzFHKiF1xRC2RulkbG0bueQ0eZK/RlaL3epDCP6cbWfgNlSehcU7LarqsLd4q59vKfJvZ+J2V0ZKzJUxlq1EwySQwve1o7yASFd+Q9tSV4VpNnKyes8Hico3HW7RbNy4y1u7Y9/vHuXcY9kjGyRuD2OG7XNO4IVPaU0db1XZfkshI+Oo55c+T7Uzt+Yb+6tnHY+viqMdKo1zYIhsxrnFxA9SqskzPSfZZDb7ZsoiKomEREARFCukLVpxFQ4ujJtdsN672nnEw/MqUy6ekcpqVtnH1/rd0skmFxUu0berZmafrH7oPh4qA0qVjIW4qlSIyzSu4WNb3rExj5HtYxpe9x2DRzJJVzaH0izT1EWbTA7Izt657fZN+6Pmtrc4p6MyTyUfNMaCx2FrsluRR3LxG7nvbu1nk0H9VKYoo4IxHFG2NjexrRsB8F6UV1vrCPTtM1qrmuyEzeoP/EPvH5BY/lko0dQjj9I+rvd434KhL9K8bWntP1W/c9T3qBYDBW9Q5OOlVaduRkk25Rt7yV0dPaPyuqLHvDuKKs93FJalG/F47feKt7CYOhgKLalGLhb2vefrSHxJWl1OKeM+lKl29vw3omCKJkYJIY0N3PadgvSIsZoCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiLi6s1DHpzCyWuRsP6kDD9p3j6DtXUm3pHG9LZEekzVJBOApSeBtOb+TPmfgofpjTlnUmUbWi3ZCzrTy7cmN/c9y06dO7nss2vDxTWrMhJcfE8y4+SvHT2Bq6exUdKuA53bLJtzkd3lbKpYp4r0zpPJW34blCjWxtKKnUiEcMTeFrR+p81nRFi9NIREQBEXB1XqurpmiXHhkuSA+xg37f7j4BdSbekcbSW2aOvNWtwOPNSrIP4hYbs3b+k37x+SpokklxO5PMkrPeu2clcluW5TLPK7ic4/wDvYpPoHShzmRF63H/oKztzuOUr+5vp4rfMrFG2ZW3ddE06OdPHEYT3ydhbavbPII5tZ9kfNaWa6T4MdmDTqU22oIncMsvHtue/hXS1/qT+BYX3eu/huWwWR7fYb3u+QUA0Lpb/AKiyhkstd7jW2Mp++e5u/wCvkqZlVvJZa21qZLfxl6pksbBcokGvK3dmw228Rt3HdbSxValelAIKsEcETexkbdgFlWZlyCIi4AiLxPNFWgknmeGRxtLnuPYAO0oDmamz8GnMRJck2dKerDH99/7eKoq5cnv25bdqQyTTOLnuPeV1tW6jl1JmHWOba0W7K8Z7m+PqVvaF0odQZH3myw/w+sQZP/sd3NHzW7HKxztmWm7rSJF0caR4Gsz2Qj6zv+1jcOwffPy/FWKjWhrQ1oDWgbAAcgEWS7dvbNEzxWjzK17ontjeGPLSGuI34T3HbvUXpdH+NZefkMpNLlbb3cTnz8m7/wCI+alSKKprw60n6fGMbGxrGNDWtGwa0bABfURcOhERAEREAREQBERAEREAREQBEXKzWpMbgmAWpS+d/wDLrRDikefILqTfgb0dVaNjM04LPurHOs2v/BAONw9e5vx2XHirZ/UW0mQkdh6B7KsDvp5B/e/7PoF3qOPqY2D2FKuyCPtIaO0+JPaT6rrSXpzbZ6rutP688bIh3Rg8Tviez8FmRFE6CQ1pc4gADck9wVIa01A7UeecYSXVoD7Ku0fa58z8T8lYPSPnjicB7pC/hsXiYwR2tZ9o/L4qOdGmlhZn/jlyPeGJ21Zrh9Zw7Xeg7vNacSUTzZTe6fFEn0LpQafx3vNlg9/stBk3/pt7m/upUiLPVOntlqSS0giIuHQi+Oc1jS97g1oG5JOwCr3VnSSyESUcC4Pk7H2tuq3/AB8T5qUQ6ekcqlK7O7q3WtTTkJgiLZ8g4dWIHkzzd4eipy/ftZO7JcuTOlmkO7nH9B4BYZZZJpXSyvc+R53c5x3JK7+ldIXNS2Q4Aw0mH6Scj8m+JW6YnEtsy1Tt6MWldL2tS5ARsBjqxneebbk0eA8SVdUEFLB4oRxhtepVjJPkB2k+a+43GVMRRjpUohFDGOQHaT4k95UG6UdRexgZgqz+vKA+wQexvc349qzunlrS8LkljnZCs5k7Wq9Rumja5zpniKvF4N35D5lXJp/DwadwcNJrm/Rt4ppDyDnHtKrno7w151t2Wix4k4QWwTTu4Y2nvd4uPdy/FWDYo1oIHXs/eFhkfWIk6kDPRnf8dypZmuoRzGv8mZzmPeiWYqu64d9jLvwQt/39/wAAV6kyEeKrmXM5GtEXcwNuADyG5JKr/UPSfNJxVcDH7CIcveHt6xH9rewKGQwZTUOQDI2z3rUh33JLj6knsC5OFtbfQeX+Fsy9JOmYpeAWpZBvtxshJaFIaGRp5Sq21RsMnhd9ph7D4HwKruHQeL07i35XU9n23sxuK0R2a53c3ftJ9Fr9Gli1Y1XckrxiGm+NzpYmcmN59QDzXKxy5bn6Oq63plqqtOk3VHG7+AU5Oq0g2nA9p7mfMqX6u1EzTmEksAg2ZepXb4u8fQdqoySSSeV0kjnPke4lzjzLiV3Bj38mcy3rpG5hsTZzmUhoVW7vkPNx7GN73H0V8YrGVsPjYaFRu0cLdt+9x7yfMqP6B0wMFifebLAL1sBz9+2Nvc35la2pukOvj5Tj8Mxt66Twlw6zGHw5fWKZKeSuMiEoW2S27eqY6uZ7tmOvEPtSO2C5VHWmn8jebSrZBrpnnZnE0tDj4AlQYaPzOYilzWq7760MbDIWu6z+EdwHY1QQnaQujJaAd2nfmPBdnDL+zlZGvo/SK+KPaGy9rM6XgsXOczHOiLz9vh7D6/spCs1LT0XJ7Wwi+Pe2NjnvcGtaCXOJ2ACq3VvSNPae+jg5HQ1wdnWRyfJ/j4D81KMbt6RyqU+k5zWrsLgt2XLYdMP6EXWf8R3fFQu/0tWHOLcdjY429zp3cR/AKv2MmtThkbXzTSHkAC5zj81OsD0XXLbWz5iY1Izz9izYyH1PYPzWn9eOFuinndeGTBdJ2RlzEMOUZAaszwwuYzhLN+QPbzVoKqdR4bFfxSrprTVBr7oeHWLBcXFm3cT3bdpVqsBaxrSdyAAT4qnKp6aRZj32mfURFSWBERAEREARzmsaXOIa0DcknYBeZJGQxulleGMYC5znHYADvVcZLMZHX2VdhsK50GMjP08/ZxjxPl4DvU4jkRqtHUyesLuXvnDaTi9tNvtLdd9SMd5H7/gutp/SNTDPNyw917JSc5LU3M79/D4LoYXCUcDQbToxcLRze8/WefElb667Xk+BT9sIiKskEREBT2vJxkteGpZmEEEPs4eN3Yxp5ud+ZVkYLL4q3EyjhQ+atWYGe1awiNu3YNztufResnpTCZi425eotlmaNuLiI4h3b7dq6cFeGrC2CvEyKJg2axjdgPgrquXKRXMtU2ZERaWUzOOw0Htshajgb3AnrO9B2lUpN+FhurkZ7VGL09DxXZ95SOpAzm93w7vUqB6g6ULVnir4WI1ouz28g3kPoOwKCTTS2JXTTSOkked3PedyT6rTH47fdFNZUvCQal1tktROdEXe7U9+UEZ+t/ke/wDRRwDc7BdDD4HJZ6z7DH1nSbfWeeTGepVq6Y0Bj8Fw2bXDcujmHuHUjP8AaPmVe7jGtIqU1b2RTSfR1YyJZdzDXV6va2HsfJ6/dH5qz/8AQ4mgBvDUqQN2G5DWtC5uc1NXxMjacMTruSm/lVIubj5u8AtSppu1k52ZDVEzbMrTxR0mfyIfh9o+ZWWm77rwvlKekaeY1pZOMnuYasG1IhzvWgWscewCNva4/kq0oVL+q9RMhdIZLNuTilkd9kd7vQBdrpA1O3L5EY+m4e4UyQOHkHv7CfQdgUp0Th6+ldPTZ3KbRSzR8bi7tjj7Q31P7K5axxvXbK38619Ejt3cZpDARmR3s69dgZEwfWefADxKp7UmqL+pLhksOMcDD9FXaeqwfM+a86m1Ha1JlHWZiWws3EMO/Jjf3PevWltM2dS5IQR7x149jPNt9UeA8z3KUY1C5V6RqnT0hpnS17U1z2cA9lXYfpZ3Dqt8h4nyVtV6uD0PhXyDhgiaOvI7nJK75nyWtks7gtDYtlKIN442/R1Yz1nHxce7fxKhcWL1H0h5Bt26TVotPUc4bMa3wYPtHzVdN5O31JNJR0u2aGUyeX6QM6yvVid7Jp+hh+zG3vc4+PmrR05gKml8P7uxwLtuOxOeXEQOZ9B3LLhcFjdN0TDTYI27cUszz1n+bioLrjXsdutLicSS6GQcM1nsDh3hvl5qLbyfGV0d0o+T9IxrDUT9RZuSdpPusX0ddv8Ab4+p7V0uj/ARZDIvyt/hZQoddxfya5/aN/Idp+CicMTp5mRM2BedgSdgPVWHhsNPqWnBi6rn1dPVD9JMBs67J9ojy3/BaL1M6RVPyrbNnJZzL63tyYrTjXQY9p2nuO3bxD17h5DmVJNOaOxmnImuij9va261iQdb4eAXWo0KuMqMqU4GwwxjZrWj8/Mrk6v1NFpvEulBa63Nu2vGe8/ePkFk5OvjPho0l8mRTpP1KDtgasm+2z7RH5N+Z+CrmKJ88rIoml8kjg1rR2klfZppLEz5pnl8kji57nHmSVP+jLTBmsfx23H9FESKzT9p3e70C19YoM/d0T7T+KbhMFUx424oo+uR3vPNx/ErooiwN7ezWlog3SnlpqeGr0IXFvvr3e0cO9rduXxJH4Kt8Jg7ufyDadKPd3a95+rG3xKuLWWmhqXD+xjcGWoTxwOPYT3tPkVwujexTxtS5irbRUycUpfM2XqlzR2Hc9wWnHfHH16UVO778JBpvSWO03APYM9racPpLDx1j6eAW7mGZKWiYsZJDBLIdnTynlE3vIHeVyp9Xe9zOq6dovyk7Ts6UdWBnq/v+Cw/9LZPMkP1HmHvZ2+50/o4h5E9rlTp73TLOvJNWjf0to2N9evZdfvyneZ0LfayyO8yOQ9N1vR5fU+V2OPwkdCE9k2QeeLb/Ac12cbhcZiIhHQpQwD7zW9Y+p7St1HSClmhjamRgLn5HJC09w24GQiNjfTvPxK30RVt7JhERAERCdgT27ICt+kTP2L1+PTGNJJc5on4ftPPYz0HaVM9N4Gvp3ER0oQDJ9aaTve/vPp4KrdH2WWukOGzdeA6SaR4Lj9sg7K51fl+KUoqj5N0ERFQWhEXmSRkTS6V7WNHe4gBAekXDyGtNPY3cTZOKR4+xD9I78lFsl0tRNBbi8c557pLDth/xH7qc47rxEXcr7LGXFy+rsJhQRausdKP6UXXefgOz4qo8prPP5cOZYvvjiPbFD1G/lzK4e/NaJ/G/wBmVPN/Cd5rpSyFoOixUDacZ5e1f1pPh3D81CbNqxcnM9qeSaV3a+RxJXRxOls1mnD3OjIYz/Vk6jB8T8lO8L0VVYC2XMWnWHDn7GLqs+J7T+Ss5Y8ZXq7K3oY27lLAr0asliQ9zBvt6nuVhYDosa3gsZ2biPb7tC7l/ud+yn1LH08bXFelWjrxD7Mbdt/XxWwqLzt+Fs4kvTDUp1qNdtepBHBE3sZG3YKOai1NZbfbgcAxtjKS8nv7W1x4nz/Retb6mfg6LKtLr5G51IWjmWjs4v281n0fplun8cXz/SZCz17MpO537eHfy/VVpaXKibe3xRm09pqvgonyuebN+fnYtSc3PPeB4BcPpD1aMVTOJpSj3yw3aRzTziYfmV1NX6ur6apFrC2W9KPoovu/3O8v1VW4LCZHWOceXvcQ53tLNl3PhH7+AVuOdvnfhC618ZOn0faU/jWQ/iFuMmjVcDseyV/cPQdpW70n6hdZvtwld+0NbZ03CeTn9w+A/VWVTp1cPjWVqsQjgrs5NHlz3PmV+frtl929PakO75pHPJ9Tup43+y+T+iNrhOhTp2L9uOpUidLNKdmMb2lWThsBrGviWYyqKeGg7ZZg7jmkJ7Ty32XzoqwjGVJ81KwGSRxihJ7mj6xHqeXwVgySMhjMkr2sY0blzjsB8VHLl74o7jx9bZFsR0e4mhN71ec/JWidzJY+rv48P77ruZbM47A0veL07IYwNmMH1neTQozmukOFs5x+noHZG648LXNaSwHy+9+iYXRNi3bGX1XObls82Vyd2R+vd8ByVbTfdsmmvJMLf4nrVrrmS9pjNPRAv9iDs+wBz3cfBVrlrzchkpZ4omwwb8MMTRsGMHJo/BWz0kZI4/Sj4IzwvtvEI27m9p/IbfFVRhcVNmspDRhIb7R3Xe7sY3vJWjC+nT8KsnujtaJ0jJqO6Z5+JmPgP0jhy9ofuj5q5oIIq0DIII2xxRjhYxo2DQsGNx1bE4+GjUZwRQt2A7ye8nzK1s5qDH6epmxelAJH0cTT15D4AfNZrt5K6LplQjLmcxUwWNkvXH7MYOq0dr3dzR5qjc7m7Wfykl607m7kxgPKNvcAs2o9SXdS3zZsnhibuIYWnqxj5nzW5pTRtzUk4kcHQUGnrzkfW8m+J/RaccLGt0U1Tt6R80fpSbUuQBeHMowneaTx/tHmfyV2QQRVa8deCNscUbQ1jGjkAFix+Pq4ulHTpxCKGMbNaP1PiVsLLkyO2XRHFBFjs2YadaSzZlbFDE0ue9x2ACgGRzl7VTZDFbGF0+wkSW5Twvn8m959AozDo7VaO7l9a1q1r+HYiB2VyLuQih5sYf7nfsq51q++7KRPytuCbIcP0kEDRwQN7mE958VuW9X0cNTdjdJVTXa4bSXpB9LJ6eH/ALyUQJknm3PFJJI71c4n9StuPHx7M93vou7ROcrZrARmGCOvJXPs5Yo28LQduRA8CpCor0f6dmwOFe+2OGzbcHvZ9wAcgfNSpY71yejRO9dhERQJBERAEREAREQFM610nbwWUlu143PozPL2SMH8onnwnw8isNDpB1HQjbGLjbDGjYCdgefx7Vdbmtewse0OaRsWkbgqPZDQWnMg4vfQEDzzLoHFm/w7FpnNLWrRS8b3uWQX/wCVM9tt7Cnv4+zP7rBL0najeNmvrR+bYf3Klj+inCE9W3caPDiafkvrOinBj61q67/e0fJS54f4R45P6QKzrjUtoEPy0zAe6MBn6BcexdtWnF1mzNMT2mSQu/VW/D0Z6aiILoJ5f85j8tl062j9O1CDFiK2473t4j+a7+7GvEP10/WUVDBNO8MghklcewMaXH8l3aOhtSX9izGviaftTkMH581dsNeCs3hghjiHgxgb+iyKL/Jf0jqwr7K0xvRK87OymSa0d8ddu5/5H9lLsVovAYgh8FBkso/qT9d358gu6iprLVessUSvoAAAADYDsAREVZML6F8RAVZTy1C30oWr2YsMhhql7K/tD1QW9UfMrsai6TaVSJ0GE2tWDy9sW7Rs/c/ksme6M62VyUt6redVdM7jkYWcTeI9pHPksmJ6McPRkbLdkkvvadw1/VZ+A7fxWl1jemynVrpEFwmm8xrPJPtzPeInv3mtyjkfJvifyVwYjD0sHj2UqMXBG3mSfrPPiT3lbcUUcETYomNjY0bNa0bAD0XpV5Mjv/hOYUhzQ5pa4bgjYjxVLar0VfwVySavC+eg9xLJGN34B4OHdt4q6UXMeRw+jtQqRSWns/qrH1/cMQyaSMuJbH7vx8JPbty5KRQ6Q1XqaRsuosi+vX339kXbu+DRyHxVljkNgNh5IpvNvtLRFY/6zl4TTeL0/DwUKwa8jZ0rub3ep+S6iIqW23tliSXhEukTAWs3hY5KYMk1N5k9kO17SNjt5rl9HGCqT6cvSzt3ltudA/bk6No7vI78/gFYKxsrwxyvljhYx8n13NaAXeviprI1HEhwXLZBcvN0gYiM16vBfgbyZZjiDpdv7h4/BQw6b1Znbjpp6FyWV55y2BwgfEq8l8UpzOfEcePf2V7p/othgc2xnJhO4cxXiPU/3Hv+CsCKKOCJsUUbY42DZrGjYAeQXpFXV1XpKZU+BERRJEP6TKd63pppqcTo4Zg+eNo3Lm7cj6AqqHuv5KRrXCey5o4WtDS7hHgAOxfodfGsYz6jGt9Bsr8ebgtaKqx8nspfFdHmoMkWukrClEft2Dsf+ParF05obFaeInANq2P68o+r/iO5SRFG81USnHMhERVEwiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiAIiIAiIgCIiA/9k=';
+const BRAND = "DJEB'S OFFICIAL";
 const today = () => new Date().toISOString().slice(0, 10);
 const addDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 const uid = (p = '') => p + Math.random().toString(36).slice(2, 8);
@@ -149,7 +152,7 @@ async function loadAll(role) {
     rows(sb.from('loyalty_rules').select('*').eq('id', 1)),
     rows(role === 'client' ? sb.from('storefront_variants').select('*') : sb.from('product_variants').select('*').eq('active', true).order('created_at')),
     role === 'admin' ? (async () => { const r = await sb.rpc('admin_list_users'); return r.data || []; })() : Promise.resolve([]),
-    role === 'admin' ? (async () => { return (await sb.from('stock_movements').select('variant_id,product_id,delta,ref_id,created_at,note,created_by').eq('reason', 'purchase_receipt').order('created_at', { ascending: true }).limit(2000)).data || []; })() : Promise.resolve([]),
+    (role === 'admin' || role === 'vendeur') ? (async () => { return (await sb.from('stock_movements').select('variant_id,product_id,delta,ref_id,created_at,note,created_by').eq('reason', 'purchase_receipt').order('created_at', { ascending: true }).limit(2000)).data || []; })() : Promise.resolve([]),
   ]);
   const rcMap = new Map();
   mvs.forEach(m => { const k = m.ref_id + '|' + m.created_at; if (!rcMap.has(k)) rcMap.set(k, { id: k, poId: m.ref_id, at: m.created_at, note: m.note || '', by: m.created_by, lines: [] }); rcMap.get(k).lines.push({ vid: m.variant_id, pid: m.product_id, qty: m.delta }); });
@@ -535,6 +538,8 @@ const IC = {
   eye: ['M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z', 'M12 9m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0'],
   zap: ['M13 2L3 14h9l-1 8 10-12h-9z'],
   globe: ['M12 22m-10 0a10 10 0 1 0 20 0a10 10 0 1 0-20 0', 'M2 12h20', 'M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20z'],
+  barcode: ['M4 5v14', 'M7 5v14', 'M11 5v14', 'M14 5v14', 'M17 5v14', 'M20 5v14'],
+  camera: ['M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z', 'M12 13m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0'],
   tag: ['M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z', 'M7 7h.01'],
 };
 function Icon({ n, s = 18, className = '' }) {
@@ -663,7 +668,7 @@ function printTicket(sale, money, t, lang) {
     @page{size:80mm auto;margin:3mm}body{font:12px/1.35 monospace;width:74mm;margin:0;color:#000}
     h1{font-size:16px;text-align:center;margin:0 0 2px}.c{text-align:center}table{width:100%;border-collapse:collapse}td{padding:1px 0;vertical-align:top}.r{text-align:end;white-space:nowrap}
     hr{border:0;border-top:1px dashed #000;margin:5px 0}.tot td{font-size:14px;font-weight:bold}</style></head><body>
-    <h1>Magasin DJ</h1><div class="c">${escH(sale.date)}</div><div class="c">${escH(sale.ref)}</div>${sale.clientName ? `<div class="c">${escH(sale.clientName)}</div>` : ''}<hr>
+    <div class="c"><img src="${LOGO_WORD}" style="height:46px"></div><h1>DJEB'S OFFICIAL</h1><div class="c">Vieux Kouba · Alger</div><div class="c">${escH(sale.date)}</div><div class="c">${escH(sale.ref)}</div>${sale.clientName ? `<div class="c">${escH(sale.clientName)}</div>` : ''}<hr>
     <table>${rows}</table><hr><table>
     ${ln(t('Sous-total', 'المجموع الفرعي'), money(sale.subtotal))}
     ${sale.tierDisc ? ln(t('Remise palier', 'خصم الفئة'), '-' + money(sale.tierDisc)) : ''}
@@ -674,6 +679,34 @@ function printTicket(sale, money, t, lang) {
     </table><hr><div class="c">${escH(t('Merci de votre visite', 'شكراً لزيارتكم'))}</div></body></html>`;
   printHTML(html);
 }
+
+/* ───────────────────────── Code-barres Code128 + points vendeur ───────────────────────── */
+const C128 = '212222 222122 222221 121223 121322 131222 122213 122312 132212 221213 221312 231212 112232 122132 122231 113222 123122 123221 223211 221132 221231 213212 223112 312131 311222 321122 321221 312212 322112 322211 212123 212321 232121 111323 131123 131321 112313 132113 132311 211313 231113 231311 112133 112331 132131 113123 113321 133121 313121 211331 231131 213113 213311 213131 311123 311321 331121 312113 312311 332111 314111 221411 431111 111224 111422 121124 121421 141122 141221 112214 112412 122114 122411 142112 142211 241211 221114 413111 241112 134111 111242 121142 121241 114212 124112 124211 411212 421112 421211 212141 214121 412121 111143 111341 131141 114113 114311 411113 411311 113141 114131 311141 411131 211412 211214 211232 2331112'.split(' ');
+const bcClean = v => String(v || '').replace(/[^\x20-\x7e]/g, '-');
+function code128Bars(value) {
+  const str = bcClean(value);
+  const codes = [104];
+  for (const ch of str) codes.push(ch.charCodeAt(0) - 32);
+  let sum = codes[0]; for (let i = 1; i < codes.length; i++) sum += codes[i] * i;
+  codes.push(sum % 103, 106);
+  return codes.map(c => C128[c]).join('');
+}
+function code128Svg(value, h = 40, mod = 2) {
+  const pat = code128Bars(value); const quiet = 10;
+  let x = quiet, bar = true, out = '';
+  for (const w of pat) { const wd = Number(w) * mod; if (bar) out += `<rect x="${x}" y="0" width="${wd}" height="${h}"/>`; x += wd; bar = !bar; }
+  const W = x + quiet;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${h}" preserveAspectRatio="none" shape-rendering="crispEdges"><rect width="${W}" height="${h}" fill="#fff"/><g fill="#000">${out}</g></svg>`;
+}
+const Barcode = ({ value, h = 40, className = '' }) => <span className={`inline-block ${className}`} style={{ height: h, width: '100%' }} dangerouslySetInnerHTML={{ __html: code128Svg(value, h).replace('<svg ', '<svg style="width:100%;height:100%" ') }} />;
+const LABEL_CSS = '@page{size:A4;margin:8mm}body{margin:0;font-family:Arial,sans-serif;color:#000}.g{display:flex;flex-wrap:wrap;gap:2mm}.l{width:50mm;height:30mm;box-sizing:border-box;border:.2mm dashed #bbb;padding:1.5mm 2mm;text-align:center;overflow:hidden;page-break-inside:avoid}.b{font-size:7pt;font-weight:700;letter-spacing:.4px}.n{font-size:7.5pt;line-height:1.15;max-height:9mm;overflow:hidden}.v{font-size:7pt}.p{font-size:9pt;font-weight:700}.bc{height:11mm;margin:.5mm 0}.bc svg{width:100%;height:100%}.s{font:6.5pt monospace}';
+function printLabels(items) {
+  const cells = items.flatMap(it => Array.from({ length: Math.max(1, it.qty || 1) }, () =>
+    `<div class="l"><div class="b">DJEB'S OFFICIAL</div><div class="n">${escH(it.name)}</div>${it.label ? `<div class="v">${escH(it.label)}</div>` : ''}<div class="bc">${code128Svg(it.sku, 40, 2)}</div><div class="s">${escH(bcClean(it.sku))}</div><div class="p">${escH(it.price)}</div></div>`));
+  printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>Étiquettes</title><style>${LABEL_CSS}</style></head><body><div class="g">${cells.join('')}</div></body></html>`);
+}
+const POINTS_PER_DA = 1000; // 1 point vendeur pour 1 000 DA encaissés au comptoir
+const sellerStats = (sales, id) => { const mine = sales.filter(x => x.sellerId === id); const tot = mine.reduce((a, x) => a + x.total, 0); const m = today().slice(0, 7); const mt = mine.filter(x => (x.date || '').slice(0, 7) === m).reduce((a, x) => a + x.total, 0); return { n: mine.length, total: tot, pts: Math.floor(tot / POINTS_PER_DA), monthTotal: mt, monthPts: Math.floor(mt / POINTS_PER_DA) }; };
 function printHTML(html) {
   const fr = document.createElement('iframe');
   fr.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0';
@@ -684,7 +717,7 @@ function printHTML(html) {
 const A4_CSS = '@page{size:A4;margin:12mm}body{font:12px/1.4 Arial,sans-serif;color:#000}h1{font-size:20px;margin:0 0 4px}h2{font-size:14px;margin:14px 0 4px}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border:1px solid #999;padding:4px 6px;text-align:left}th{background:#eee}.r{text-align:right}.muted{color:#555}';
 function ReceiptModal({ sale, onClose }) {
   const { t, money, lang, toast } = useApp();
-  const txt = [`${t('Magasin DJ', 'متجر DJ')} — ${sale.ref}`, sale.date, sale.clientName, '', ...sale.lines.map(l => `${l.qty} x ${lang === 'ar' ? l.ar : l.name} = ${money(l.qty * l.price)}`), '', `${t('Sous-total', 'المجموع الفرعي')}: ${money(sale.subtotal)}`, sale.tierDisc ? `${t('Remise palier', 'خصم الفئة')}: -${money(sale.tierDisc)}` : '', sale.voucherDisc ? `${t('Bon', 'قسيمة')} ${sale.voucher}: -${money(sale.voucherDisc)}` : '', sale.pointsDisc ? `${t('Points utilisés', 'نقاط مستعملة')}: -${money(sale.pointsDisc)}` : '', `${t('TOTAL', 'الإجمالي')}: ${money(sale.total)}`, sale.pointsEarned ? `${t('Points gagnés', 'نقاط مكتسبة')}: +${sale.pointsEarned}` : ''].filter(x => x !== '').join('\n');
+  const txt = [`${BRAND} — ${sale.ref}`, sale.date, sale.clientName, '', ...sale.lines.map(l => `${l.qty} x ${lang === 'ar' ? l.ar : l.name} = ${money(l.qty * l.price)}`), '', `${t('Sous-total', 'المجموع الفرعي')}: ${money(sale.subtotal)}`, sale.tierDisc ? `${t('Remise palier', 'خصم الفئة')}: -${money(sale.tierDisc)}` : '', sale.voucherDisc ? `${t('Bon', 'قسيمة')} ${sale.voucher}: -${money(sale.voucherDisc)}` : '', sale.pointsDisc ? `${t('Points utilisés', 'نقاط مستعملة')}: -${money(sale.pointsDisc)}` : '', `${t('TOTAL', 'الإجمالي')}: ${money(sale.total)}`, sale.pointsEarned ? `${t('Points gagnés', 'نقاط مكتسبة')}: +${sale.pointsEarned}` : ''].filter(x => x !== '').join('\n');
   return (
     <Modal title={`${t('Reçu', 'إيصال')} ${sale.ref}`} onClose={onClose}>
       <div className="mb-4 flex items-center justify-between text-sm text-zinc-500"><span>{sale.date}</span><Badge tone={sale.channel === 'Web' ? 'blue' : 'dark'}>{sale.channel === 'Web' ? t('Site web', 'الموقع') : t('Magasin', 'المتجر')}</Badge></div>
@@ -908,6 +941,64 @@ function EditProductModal({ p, onClose }) {
     </Modal>
   );
 }
+function LabelsModal({ p, onClose }) {
+  const { t, lang, money, pn } = useApp();
+  const [qty, setQty] = useState(() => Object.fromEntries(p.variants.map(v => [v.id, 1])));
+  const total = Object.values(qty).reduce((a, n) => a + (Number(n) || 0), 0);
+  const items = () => p.variants.map(v => ({ sku: v.sku || p.sku, name: pn(p), label: vLabel(v, lang), price: money(v.price), qty: Number(qty[v.id]) || 0 })).filter(i => i.qty > 0);
+  return (
+    <Modal title={`${t('Codes-barres', 'الباركود')} · ${pn(p)}`} onClose={onClose} wide>
+      <div className="space-y-2">
+        {p.variants.map(v => (
+          <div key={v.id} className="flex items-center gap-3 rounded-xl border border-zinc-100 p-2">
+            <div className="w-40 shrink-0"><Barcode value={v.sku || p.sku} h={36} /><div className="mt-0.5 text-center font-mono text-[10px] text-zinc-500">{v.sku || p.sku}</div></div>
+            <div className="min-w-0 flex-1 text-sm"><div className="truncate font-medium">{vLabel(v, lang) || t('Standard', 'قياسي')}</div><div className="tabular text-xs text-zinc-500">{money(v.price)} · {t('stock', 'مخزون')} {v.stock}</div></div>
+            <label className="flex items-center gap-1 text-xs text-zinc-500">{t('Étiquettes', 'ملصقات')}<input type="number" min="0" value={qty[v.id]} onChange={e => setQty({ ...qty, [v.id]: e.target.value })} className="tabular w-16 rounded-lg border border-zinc-200 px-2 py-1 text-center text-sm" /></label>
+          </div>))}
+      </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-2 text-xs"><button className="rounded-full bg-zinc-100 px-3 py-1.5" onClick={() => setQty(Object.fromEntries(p.variants.map(v => [v.id, 1])))}>{t('1 chacun', '1 لكل')}</button><button className="rounded-full bg-zinc-100 px-3 py-1.5" onClick={() => setQty(Object.fromEntries(p.variants.map(v => [v.id, Math.max(0, v.stock)])))}>{t('= stock', '= المخزون')}</button></div>
+        <div className="flex gap-2"><Btn v="ghost" onClick={onClose}>{t('Fermer', 'إغلاق')}</Btn><Btn disabled={!total} onClick={() => printLabels(items())}><Icon n="receipt" s={14} />{t('Imprimer', 'طباعة')} ({total})</Btn></div>
+      </div>
+    </Modal>
+  );
+}
+let h5Promise = null;
+const loadH5 = () => h5Promise || (h5Promise = new Promise((res, rej) => { if (window.Html5Qrcode) return res(window.Html5Qrcode); const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js'; sc.onload = () => res(window.Html5Qrcode); sc.onerror = () => { h5Promise = null; rej(new Error('scanner')); }; document.head.appendChild(sc); }));
+function ScanModal({ onCode, onClose }) {
+  const { t } = useApp();
+  const vref = useRef(null); const [err, setErr] = useState(''); const [last, setLast] = useState('');
+  useEffect(() => {
+    let stop = false, stream = null, h5 = null, raf = 0; const seen = { c: '', at: 0 };
+    const hit = c => { const n = Date.now(); if (c === seen.c && n - seen.at < 1800) return; seen.c = c; seen.at = n; setLast(c); try { navigator.vibrate && navigator.vibrate(60); } catch (e) {} onCode(c); };
+    (async () => {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('nocam');
+        if ('BarcodeDetector' in window) {
+          const det = new window.BarcodeDetector({ formats: ['code_128', 'ean_13', 'ean_8', 'upc_a', 'code_39', 'qr_code'] });
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+          if (stop) { stream.getTracks().forEach(x => x.stop()); return; }
+          const v = vref.current; v.srcObject = stream; await v.play();
+          const loop = async () => { if (stop) return; try { const r = await det.detect(v); if (r && r[0] && r[0].rawValue) hit(r[0].rawValue); } catch (e) {} raf = setTimeout(loop, 220); };
+          loop();
+        } else {
+          const H = await loadH5(); if (stop) return;
+          h5 = new H('scan-box');
+          await h5.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 120 } }, c => hit(c), () => {});
+        }
+      } catch (e) { setErr(/Permission|NotAllowed/i.test(String(e && (e.name || e.message))) ? t('Autorisez l’accès à la caméra dans le navigateur', 'اسمح بالوصول إلى الكاميرا') : t('Caméra indisponible (HTTPS requis). Utilisez le champ code.', 'الكاميرا غير متاحة. استخدم حقل الرمز.')); }
+    })();
+    return () => { stop = true; clearTimeout(raf); if (stream) stream.getTracks().forEach(x => x.stop()); if (h5) { try { h5.stop().then(() => h5.clear()).catch(() => {}); } catch (e) {} } };
+  }, []);
+  return (
+    <Modal title={t('Scanner un code-barres', 'مسح الباركود')} onClose={onClose}>
+      <div className="overflow-hidden rounded-2xl bg-black"><video ref={vref} playsInline muted className="aspect-[4/3] w-full object-cover" /><div id="scan-box" className="w-full" /></div>
+      {err ? <div className="mt-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{err}</div> : <div className="mt-3 text-center text-xs text-zinc-500">{t('Placez le code-barres devant la caméra : chaque lecture ajoute 1 article.', 'ضع الباركود أمام الكاميرا: كل قراءة تضيف قطعة.')}</div>}
+      {last && <div className="mt-2 text-center font-mono text-sm font-semibold">✓ {last}</div>}
+      <div className="mt-4 flex justify-end"><Btn onClick={onClose}>{t('Terminer', 'إنهاء')}</Btn></div>
+    </Modal>
+  );
+}
 function StockView({ readonly }) {
   const { db, act, t, pn, money, toast, lang } = useApp();
   const dupProduct = p => act(() => must(sb.rpc('duplicate_product', { p_product_id: p.id })), t('Produit dupliqué (stock à 0) : modifiez-le', 'تم نسخ المنتج (المخزون 0): عدّله'));
@@ -930,6 +1021,7 @@ function StockView({ readonly }) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(null);
   const [openP, setOpenP] = useState({});
+  const [labelP, setLabelP] = useState(null);
   const rows = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar + p.sku).toLowerCase().includes(q.toLowerCase())));
   const totalValue = db.products.reduce((s, p) => s + p.stock * p.cost, 0);
   const lowCount = db.products.filter(p => p.stock <= p.reorder).length;
@@ -1004,11 +1096,14 @@ function StockView({ readonly }) {
                     </div>); })}
                 </div>
               )}
-              {!readonly && <div className="mt-2 flex gap-1 border-t border-zinc-100 pt-2">
+              <div className="mt-2 flex gap-1 border-t border-zinc-100 pt-2">
+                <button onClick={() => setLabelP(p)} title={t('Codes-barres / étiquettes', 'الباركود / الملصقات')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="barcode" s={14} /></button>
+                {!readonly && <>
                 <button onClick={() => setEditing(p)} title={t('Modifier', 'تعديل')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="edit" s={14} /></button>
                 <button onClick={() => dupProduct(p)} title={t('Dupliquer', 'نسخ')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="copy" s={14} /></button>
                 <button onClick={() => delProduct(p)} title={t('Supprimer', 'حذف')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-rose-600 hover:bg-rose-50"><Icon n="trash" s={14} /></button>
-              </div>}
+                </>}
+              </div>
             </div>
           ))}
         </div>
@@ -1016,6 +1111,7 @@ function StockView({ readonly }) {
       </Card>
       {adding && <AddProductModal onClose={() => setAdding(false)} />}
       {editing && <EditProductModal p={editing} onClose={() => setEditing(null)} />}
+      {labelP && <LabelsModal p={labelP} onClose={() => setLabelP(null)} />}
     </div>
   );
 }
@@ -1052,7 +1148,8 @@ function ReceiveModal({ po, onClose }) {
   );
 }
 function Achats() {
-  const { db, act, t, pn, money, toast, lang } = useApp();
+  const { db, act, t, pn, money, toast, lang, role } = useApp();
+  const ro = role !== 'admin';
   const [supId, setSupId] = useState(db.suppliers[0]?.id || '');
   const [expected, setExpected] = useState(addDays(5));
   const [lines, setLines] = useState([]);
@@ -1099,7 +1196,7 @@ function Achats() {
         <Kpi label={t('Brouillons', 'مسودات')} value={db.purchases.filter(p => p.status === 'Brouillon').length} icon="edit" tone="zinc" />
         <Kpi label={t('Réassort requis', 'إعادة تخزين مطلوبة')} value={low.length} icon="alert" tone="amber" hint={t('Stock ≤ seuil', 'المخزون ≤ الحد')} />
       </div>
-      {groups.length > 0 && (
+      {!ro && groups.length > 0 && (
         <Card className="mb-4 p-5">
           <h2 className="mb-3 font-semibold">{t('Réassort suggéré', 'إعادة التخزين المقترحة')}</h2>
           <div className="grid gap-3 md:grid-cols-2">
@@ -1113,7 +1210,7 @@ function Achats() {
           </div>
         </Card>
       )}
-      <Card className="mb-4 p-5">
+      {!ro && <Card className="mb-4 p-5">
         <h2 className="mb-3 font-semibold">{t('Nouveau bon de commande', 'طلب شراء جديد')}</h2>
         <div className="grid gap-3 md:grid-cols-4">
           <Field label={t('Fournisseur', 'المورد')}><Select value={supId} onChange={e => setSupId(e.target.value)}>{db.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
@@ -1137,7 +1234,7 @@ function Achats() {
           <Btn v="ghost" onClick={() => createPO('Brouillon')}>{t('Enregistrer brouillon', 'حفظ كمسودة')}</Btn>
           <Btn onClick={() => createPO('Envoyée')}><Icon n="send" s={14} />{t('Envoyer au fournisseur', 'إرسال إلى المورد')}</Btn>
         </div>
-      </Card>
+      </Card>}
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -1156,12 +1253,12 @@ function Achats() {
                     <td className="tabular px-4 py-3">{rec} / {qty}</td>
                     <td className="tabular px-4 py-3 font-medium">{money(po.lines.reduce((s, l) => s + lineTotal(l), 0))}</td>
                     <td className="px-4 py-3"><StatusBadge status={po.status} /></td>
-                    <td className="px-4 py-3 text-end">
+                    <td className="px-4 py-3 text-end">{!ro && <>
                       <Btn v="ghost" className="me-1 !px-2.5 !py-1 text-xs !text-rose-600" onClick={() => { if (confirm(t(`Supprimer le bon ${po.ref} ?`, `حذف الطلب ${po.ref}؟`))) act(() => must(sb.rpc('delete_purchase_order', { p_po_id: po.id })), t('Bon supprimé', 'تم حذف الطلب')); }}><Icon n="trash" s={13} /></Btn>
                       <Btn v="ghost" className="me-1 !px-2.5 !py-1 text-xs" onClick={() => mailPO(po.supplierId, po.ref, po.expected, po.lines)}><Icon n="send" s={13} />Email</Btn>
                       {po.status === 'Brouillon' && <Btn v="soft" onClick={() => send(po.id)}><Icon n="send" s={13} />{t('Envoyer', 'إرسال')}</Btn>}
                       {['Envoyée', 'Confirmée', 'Expédiée', 'Reçue partiellement'].includes(po.status) && <Btn v="accent" onClick={() => setRecv(po)}><Icon n="check" s={13} />{t('Réceptionner', 'استلام')}</Btn>}
-                    </td>
+                    </>}</td>
                   </tr>
                 );
               })}
@@ -1202,7 +1299,8 @@ function EditSupplierModal({ s, onClose }) {
   );
 }
 function Fournisseurs() {
-  const { db, act, t, pn, money, toast, lang } = useApp();
+  const { db, act, t, pn, money, toast, lang, role } = useApp();
+  const ro = role !== 'admin';
   const [adding, setAdding] = useState(false);
   const [editS, setEditS] = useState(null);
   const [f, setF] = useState({ name: '', contact: '', email: '', city: '', leadDays: 5 });
@@ -1214,7 +1312,7 @@ function Fournisseurs() {
   return (
     <div>
       <PageTitle title={t('Fournisseurs', 'الموردون')} sub={t('Tarifs, délais de livraison et historique de réassort', 'الأسعار ومهل التسليم وسجل إعادة التخزين')}
-        right={<Btn onClick={() => setAdding(!adding)}><Icon n="plus" s={15} />{t('Fournisseur', 'مورد')}</Btn>} />
+        right={!ro && <Btn onClick={() => setAdding(!adding)}><Icon n="plus" s={15} />{t('Fournisseur', 'مورد')}</Btn>} />
       {adding && (
         <Card className="fade-up mb-4 p-5"><div className="grid gap-3 md:grid-cols-5">
           <Field label={t('Nom', 'الاسم')}><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
@@ -1234,10 +1332,10 @@ function Fournisseurs() {
             <Card key={s.id} className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <div><div className="font-semibold">{s.name}</div><div className="text-xs text-zinc-500">{s.contact} · {s.city} · {s.email}</div></div>
-                <div className="flex items-center gap-2"><Badge tone="amber">★ {s.rating || '—'}</Badge><Btn v="soft" className="!px-2.5 !py-1 text-xs" onClick={() => setEditS(s)}><Icon n="edit" s={13} />{t('Modifier', 'تعديل')}</Btn></div>
+                <div className="flex items-center gap-2"><Badge tone="amber">★ {s.rating || '—'}</Badge>{!ro && <Btn v="soft" className="!px-2.5 !py-1 text-xs" onClick={() => setEditS(s)}><Icon n="edit" s={13} />{t('Modifier', 'تعديل')}</Btn>}</div>
               </div>
               <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-                <div className="rounded-xl bg-zinc-50 p-3"><div className="text-[11px] text-zinc-500">{t('Délai', 'المهلة')}</div><label className="mt-1 flex items-center justify-center gap-1"><NumInput value={s.leadDays} min={1} onCommit={v => act(() => must(sb.from('suppliers').update({ lead_days: v }).eq('id', s.id)), t('Délai mis à jour', 'تم تحديث المهلة'))} className="tabular w-12 rounded-md border border-zinc-200 bg-white px-1 text-center text-sm" /><span className="text-xs">j</span></label></div>
+                <div className="rounded-xl bg-zinc-50 p-3"><div className="text-[11px] text-zinc-500">{t('Délai', 'المهلة')}</div><label className="mt-1 flex items-center justify-center gap-1">{ro ? <span className="tabular text-sm font-semibold">{s.leadDays}</span> : <NumInput value={s.leadDays} min={1} onCommit={v => act(() => must(sb.from('suppliers').update({ lead_days: v }).eq('id', s.id)), t('Délai mis à jour', 'تم تحديث المهلة'))} className="tabular w-12 rounded-md border border-zinc-200 bg-white px-1 text-center text-sm" />}<span className="text-xs">j</span></label></div>
                 <div className="rounded-xl bg-zinc-50 p-3"><div className="text-[11px] text-zinc-500">{t('Commandes', 'الطلبات')}</div><div className="tabular mt-1 font-semibold">{pos.length}</div></div>
                 <div className="rounded-xl bg-zinc-50 p-3"><div className="text-[11px] text-zinc-500">{t('Total achats', 'إجمالي المشتريات')}</div><div className="tabular mt-1 text-sm font-semibold">{money(spent)}</div></div>
               </div>
@@ -1536,7 +1634,7 @@ function useFullscreen() {
   return [on, toggle];
 }
 function POS() {
-  const { db, t, pn, money, lang, quote, checkout, role } = useApp();
+  const { db, t, pn, money, lang, quote, checkout, role, toast, userId } = useApp();
   const canPrice = role === 'admin';
   const [fs, toggleFs] = useFullscreen();
   const [q, setQ] = useState('');
@@ -1551,9 +1649,17 @@ function POS() {
   const [picking, setPicking] = useState(null);
   const addV = (p, v) => {
     if (v.stock <= 0) return;
-    const e = cart.find(x => x.vid === v.id);
-    setCart(e ? cart.map(x => x.vid === v.id ? { ...x, qty: Math.min(v.stock, x.qty + 1) } : x) : [...cart, { pid: p.id, vid: v.id, qty: 1 }]);
+    setCart(c => c.some(x => x.vid === v.id) ? c.map(x => x.vid === v.id ? { ...x, qty: Math.min(v.stock, x.qty + 1) } : x) : [...c, { pid: p.id, vid: v.id, qty: 1 }]);
   };
+  const [scanning, setScanning] = useState(false);
+  const [scanTxt, setScanTxt] = useState('');
+  const scanCode = raw => {
+    const c = String(raw || '').trim().toLowerCase(); if (!c) return false;
+    for (const p of db.products) { const v = p.variants.find(x => (x.sku || '').toLowerCase() === c); if (v) { if (v.stock <= 0) { toast(`${pn(p)} · ${t('en rupture', 'نفد المخزون')}`, 'err'); return true; } addV(p, v); toast(`+1 ${pn(p)}${vLabel(v, lang) ? ' · ' + vLabel(v, lang) : ''}`); return true; } }
+    toast(`${t('Code inconnu', 'رمز غير معروف')} : ${raw}`, 'err'); return false;
+  };
+  const scanRef = useRef(scanCode); scanRef.current = scanCode;
+  const me = role === 'vendeur' ? sellerStats(db.sales, userId) : null;
   const add = p => {
     if (p.stock <= 0 || !p.variants.length) return;
     if (p.variants.length === 1) addV(p, p.variants[0]); else setPicking(p);
@@ -1568,10 +1674,16 @@ function POS() {
   };
   return (
     <div className="grid gap-4 xl:grid-cols-5">
+      {scanning && <ScanModal onCode={c => scanRef.current(c)} onClose={() => setScanning(false)} />}
       {picking && <VariantPicker p={picking} onPick={v => { addV(picking, v); setPicking(null); }} onClose={() => setPicking(null)} />}
       {newClient && <AddClientModal onClose={() => setNewClient(false)} onCreated={id => { setClientId(id); setUsePts(0); }} />}
       <div className="xl:col-span-3">
         <PageTitle title={t('Vente · Caisse', 'البيع · الصندوق')} sub={t('Encaissement rapide, stock déduit automatiquement', 'تسجيل سريع، والمخزون يُخصم تلقائياً')} right={<Btn v="ghost" onClick={toggleFs}><Icon n="globe" s={15} />{fs ? t('Quitter le plein écran', 'إنهاء ملء الشاشة') : t('Plein écran', 'ملء الشاشة')}</Btn>} />
+        {me && <div className="mb-3 flex items-center justify-between rounded-2xl bg-violet-50 px-4 py-2.5 text-sm"><span className="font-semibold text-violet-900">★ {fmtNum(me.pts)} {t('points', 'نقطة')}</span><span className="tabular text-xs text-violet-700">{t('Ce mois', 'هذا الشهر')} : {fmtNum(me.monthPts)} pts · {money(me.monthTotal)}</span></div>}
+        <form onSubmit={e => { e.preventDefault(); if (scanCode(scanTxt)) setScanTxt(''); }} className="mb-3 flex gap-2">
+          <div className="relative flex-1"><Icon n="barcode" s={15} className="absolute start-3 top-2.5 text-zinc-400" /><Input value={scanTxt} onChange={e => setScanTxt(e.target.value)} placeholder={t('Code-barres (douchette) + Entrée', 'الباركود (قارئ) + Enter')} className="ps-9 font-mono" dir="ltr" /></div>
+          <Btn type="button" v="accent" onClick={() => setScanning(true)}><Icon n="camera" s={15} />{t('Scanner', 'مسح')}</Btn>
+        </form>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <div className="relative min-w-48 flex-1"><Icon n="search" s={15} className="absolute start-3 top-2.5 text-zinc-400" /><Input value={q} onChange={e => setQ(e.target.value)} placeholder={t('Nom ou SKU…', 'الاسم أو الرمز…')} className="ps-9" /></div>
           <div className="flex flex-wrap gap-1.5">{['Toutes', ...CATS].map(c => <button key={c} onClick={() => setCat(c)} className={`rounded-full px-3 py-1.5 text-xs font-medium ${cat === c ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'}`}>{lang === 'ar' ? CAT_AR[c] : c}</button>)}</div>
@@ -1961,9 +2073,9 @@ const NAV = {
     { k: 'users', fr: 'Utilisateurs', ar: 'المستخدمون', ic: 'user' },
   ],
   vendeur: [
-    { k: 'pos', fr: 'Vente (caisse)', ar: 'البيع (الصندوق)', ic: 'cart' },
-    { k: 'vjour', fr: 'Ventes du jour', ar: 'مبيعات اليوم', ic: 'receipt' },
-    { k: 'stockv', fr: 'Consulter le stock', ar: 'عرض المخزون', ic: 'box' },
+    { k: 'pos', fr: 'Ventes · Comptoir', ar: 'المبيعات · الصندوق', ic: 'cart' },
+    { k: 'stockv', fr: 'Stock', ar: 'المخزون', ic: 'box' },
+    { k: 'pts', fr: 'Mes points', ar: 'نقاطي', ic: 'star' },
   ],
   fournisseur: [
     { k: 'portail', fr: 'Mes commandes', ar: 'طلباتي', ic: 'truck' },
@@ -2004,7 +2116,7 @@ function Inventaire() {
   };
   const printSheet = () => {
     const rows = prods.flatMap(p => p.variants.map(v => `<tr><td>${escH(p.name)}</td><td>${escH(vLabel(v, 'fr') || 'Standard')}</td><td>${escH(v.sku)}</td><td class="r">${v.stock}</td><td></td></tr>`)).join('');
-    printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>Inventaire</title><style>${A4_CSS}</style></head><body><h1>Feuille d’inventaire</h1><div class="muted">Magasin DJ · ${today()}</div><table><thead><tr><th>Produit</th><th>Variante</th><th>SKU</th><th class="r">Système</th><th style="width:90px">Compté</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
+    printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>Inventaire</title><style>${A4_CSS}</style></head><body><h1>Feuille d’inventaire</h1><div class="muted">DJEB'S OFFICIAL · ${today()}</div><table><thead><tr><th>Produit</th><th>Variante</th><th>SKU</th><th class="r">Système</th><th style="width:90px">Compté</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
   };
   return (
     <div>
@@ -2091,7 +2203,7 @@ function Receptions() {
   });
   const print = r => {
     const body = r.lines.map(l => `<tr><td>${escH(l.name)}${l.label ? ' (' + escH(l.label) + ')' : ''}</td><td class="r">${l.qty}</td><td class="r">${l.cost}</td><td class="r">${l.qty * l.cost}</td></tr>`).join('');
-    printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>${r.no}</title><style>${A4_CSS}</style></head><body><h1>Bon de réception ${r.no}</h1><div class="muted">Magasin DJ · ${escH(r.at.slice(0, 10))}</div><h2>Fournisseur : ${escH(r.supName)} · Commande ${escH(r.poRef)}</h2><div>Reçu par : <b>${escH(r.who)}</b></div><table><thead><tr><th>Article</th><th class="r">Qté reçue</th><th class="r">Coût unit. (DA)</th><th class="r">Total (DA)</th></tr></thead><tbody>${body}<tr><th>Total</th><th class="r">${r.qty}</th><th></th><th class="r">${r.value}</th></tr></tbody></table><p style="margin-top:40px">Signature : ____________________</p></body></html>`);
+    printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>${r.no}</title><style>${A4_CSS}</style></head><body><h1>Bon de réception ${r.no}</h1><div class="muted">DJEB'S OFFICIAL · ${escH(r.at.slice(0, 10))}</div><h2>Fournisseur : ${escH(r.supName)} · Commande ${escH(r.poRef)}</h2><div>Reçu par : <b>${escH(r.who)}</b></div><table><thead><tr><th>Article</th><th class="r">Qté reçue</th><th class="r">Coût unit. (DA)</th><th class="r">Total (DA)</th></tr></thead><tbody>${body}<tr><th>Total</th><th class="r">${r.qty}</th><th></th><th class="r">${r.value}</th></tr></tbody></table><p style="margin-top:40px">Signature : ____________________</p></body></html>`);
   };
   return (
     <div>
@@ -2251,9 +2363,42 @@ const GESTION_TABS = [
   { k: 'recep', fr: 'Bons de réception', ar: 'سندات الاستلام', ic: 'receipt', C: Receptions },
   { k: 'fourn', fr: 'Fournisseurs', ar: 'الموردون', ic: 'users', C: Fournisseurs },
 ];
+function Points() {
+  const { db, t, money, role, userId } = useApp();
+  const isAdmin = role === 'admin';
+  const ids = isAdmin ? db.staff.map(u => ({ id: u.id, name: u.name, role: u.role })) : [{ id: userId, name: '', role: 'vendeur' }];
+  const rows = ids.map(u => ({ ...u, ...sellerStats(db.sales, u.id) })).sort((a, b) => b.pts - a.pts);
+  const mine = rows.find(r => r.id === userId) || { pts: 0, total: 0, n: 0, monthPts: 0, monthTotal: 0 };
+  return (
+    <div>
+      <PageTitle title={isAdmin ? t('Points vendeurs', 'نقاط البائعين') : t('Mes points', 'نقاطي')} sub={t(`1 point pour chaque ${fmtNum(POINTS_PER_DA)} DA vendus au comptoir`, `نقطة واحدة لكل ${fmtNum(POINTS_PER_DA)} دج من مبيعات الصندوق`)} />
+      {!isAdmin && (
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <Kpi label={t('Points (total)', 'النقاط (المجموع)')} value={fmtNum(mine.pts)} icon="star" tone="violet" />
+          <Kpi label={t('Points ce mois', 'نقاط هذا الشهر')} value={fmtNum(mine.monthPts)} icon="crown" tone="amber" hint={money(mine.monthTotal)} />
+          <Kpi label={t('Ventes au comptoir', 'مبيعات الصندوق')} value={mine.n} icon="receipt" tone="blue" hint={money(mine.total)} />
+        </div>
+      )}
+      {isAdmin && (
+        <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
+          <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500"><tr>{['#', t('Vendeur', 'البائع'), t('Ventes', 'المبيعات'), t('Chiffre', 'رقم المعاملات'), t('Ce mois', 'هذا الشهر'), t('Points', 'النقاط')].map((h, i) => <th key={i} className="px-4 py-3 text-start font-semibold">{h}</th>)}</tr></thead>
+          <tbody className="divide-y divide-zinc-100">{rows.map((r, i) => (
+            <tr key={r.id}><td className="tabular px-4 py-3 text-zinc-400">{i + 1}</td><td className="px-4 py-3 font-medium">{r.name || '—'} <Badge tone={r.role === 'admin' ? 'dark' : 'zinc'}>{r.role}</Badge></td><td className="tabular px-4 py-3">{r.n}</td><td className="tabular px-4 py-3">{money(r.total)}</td><td className="tabular px-4 py-3 text-zinc-600">{fmtNum(r.monthPts)} pts · {money(r.monthTotal)}</td><td className="tabular px-4 py-3 font-bold text-violet-700">★ {fmtNum(r.pts)}</td></tr>))}
+            {rows.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-zinc-500">—</td></tr>}</tbody></table></div></Card>
+      )}
+    </div>
+  );
+}
+const STOCKV_TABS = [
+  { k: 'produits', fr: 'Produits & stock', ar: 'المنتجات والمخزون', ic: 'box', C: () => <StockView readonly /> },
+  { k: 'achat', fr: 'Achats', ar: 'المشتريات', ic: 'truck', C: Achats },
+  { k: 'recep', fr: 'Bons de réception', ar: 'سندات الاستلام', ic: 'receipt', C: Receptions },
+  { k: 'fourn', fr: 'Fournisseurs', ar: 'الموردون', ic: 'users', C: Fournisseurs },
+];
 const VENTES_TABS = [
   { k: 'comptoir', fr: 'Comptoir', ar: 'الصندوق', ic: 'cart', C: POS },
   { k: 'journal', fr: 'Journal de vente', ar: 'سجل المبيعات', ic: 'receipt', C: Ventes },
+  { k: 'pts', fr: 'Points vendeurs', ar: 'نقاط البائعين', ic: 'star', C: Points },
 ];
 const VIEWS = {
   dash: Dashboard,
@@ -2262,7 +2407,7 @@ const VIEWS = {
   fourn: () => <Hub tabs={GESTION_TABS} initial="fourn" />,
   ventes: () => <Hub tabs={VENTES_TABS} initial="comptoir" />,
   fid: Fidelite, bons: Bons,
-  pos: () => <PosEntry />, vjour: VentesJour, stockv: () => <StockView readonly />,
+  pos: () => <PosEntry />, vjour: VentesJour, stockv: () => <Hub tabs={STOCKV_TABS} initial="produits" />, pts: Points,
   portail: () => <Fournisseur mode="portail" />, reassort: () => <Fournisseur mode="reassort" />,
   boutique: Storefront, mesp: MesPoints, users: Utilisateurs,
 };
@@ -2343,7 +2488,7 @@ function Shell({ session, lang, setLang }) {
     </Card></div>
   );
 
-  const ctx = { db, act, reload, busy, toast, t, lang, pn, money, role, view, setView, supplierId, setSupplierId, clientId, setClientId, quote, checkout, rules: db.rules, setReceipt };
+  const ctx = { db, act, reload, busy, toast, t, lang, pn, money, role, view, setView, supplierId, setSupplierId, clientId, setClientId, quote, checkout, rules: db.rules, setReceipt, userId: session.user.id };
   const View = VIEWS[view] || Dashboard;
   const navKey = role === 'admin' ? ({ achat: 'stock', fourn: 'stock', pos: 'ventes' }[view] || view) : view;
 
@@ -2353,8 +2498,8 @@ function Shell({ session, lang, setLang }) {
         <header className="sticky top-0 z-30 backdrop-blur" style={{ background: 'color-mix(in srgb, var(--bg) 85%, transparent)' }}>
           <div className="flex h-14 items-center gap-3 px-4">
             <div className="flex items-center gap-2.5">
-              <div className="brand text-xl font-black uppercase tracking-tight">DJ</div>
-              <div className="hidden leading-tight sm:block"><div className="text-sm font-extrabold uppercase tracking-wide">Magasin</div><div className="text-[11px] text-zinc-500">{t('Gestion du magasin', 'إدارة المتجر')}</div></div>
+              <img src={LOGO_EMB} alt="Djeb's" className="h-9 w-9 rounded-xl object-cover" />
+              <div className="hidden leading-tight sm:block"><div className="brand text-sm font-extrabold uppercase tracking-wide">{BRAND}</div><div className="text-[11px] text-zinc-500">{t('Gestion du magasin', 'إدارة المتجر')}</div></div>
             </div>
             <div className="ms-auto flex items-center gap-2">
               <div className="hidden text-end leading-tight sm:block"><div className="max-w-[180px] truncate text-xs font-semibold">{profile.full_name || session.user.email}</div><div className="text-[11px] text-zinc-500">{(ROLES.find(r => r.k === role) || {})[lang === 'ar' ? 'ar' : 'fr']}</div></div>
@@ -2425,7 +2570,7 @@ function AuthScreen({ lang, setLang }) {
     <div className="grid min-h-screen place-items-center p-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-2.5"><div className="grid h-9 w-9 place-items-center rounded-lg bg-zinc-900 text-sm font-extrabold text-white">DJ</div><div className="leading-tight"><div className="font-semibold">Magasin</div><div className="text-[11px] text-zinc-500">{t('Site web officiel & ERP', 'الموقع الرسمي ونظام الإدارة')}</div></div></div>
+          <div className="flex items-center gap-3"><img src={LOGO_EMB} alt="Djeb's" className="h-12 w-12 rounded-2xl object-cover" /><div className="leading-tight"><div className="brand text-base font-extrabold uppercase tracking-wide">{BRAND}</div><div className="text-[11px] text-zinc-500">{t('L’élégance au quotidien', 'الأناقة كل يوم')}</div></div></div>
           <button onClick={() => setLang(lang === 'fr' ? 'ar' : 'fr')} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50"><Icon n="globe" s={14} />{lang === 'fr' ? 'عربي' : 'FR'}</button>
         </div>
         <Card className="p-6">
