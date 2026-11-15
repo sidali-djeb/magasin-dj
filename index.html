@@ -10,12 +10,35 @@
 <!-- Version Tailwind épinglée : le rendu ne change pas si la CDN publie une nouvelle version -->
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Arabic:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Arabic:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.10/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <style>
+  :root { --accent: #ffe14a; --accent-h: #ffd60a; --accent-fg: #18181b; --bg: #e6e6e8; --ink: #18181b; --ink-fg: #ffffff; --r-card: 24px; --r-btn: 9999px; --r-input: 9999px; --font-head: inherit; }
+  html .ui-card { border-radius: var(--r-card); }
+  html .ui-btn, html .ui-pill { border-radius: var(--r-btn); }
+  html .ui-input { border-radius: var(--r-input); }
+  h1, .brand { font-family: var(--font-head); }
+  /* Thème sombre */
+  html[data-ui=sombre] { color-scheme: dark; }
+  html[data-ui=sombre] body { color: #e7e7ea; }
+  html[data-ui=sombre] .bg-white { background-color: #1c1c21; }
+  html[data-ui=sombre] .bg-white\/55, html[data-ui=sombre] .bg-white\/60 { background-color: rgba(28,28,33,.7); }
+  html[data-ui=sombre] .bg-zinc-50 { background-color: #232329; }
+  html[data-ui=sombre] .bg-zinc-100, html[data-ui=sombre] .hover\:bg-zinc-50:hover, html[data-ui=sombre] .hover\:bg-white:hover { background-color: #2a2a31; }
+  html[data-ui=sombre] .bg-zinc-200, html[data-ui=sombre] .hover\:bg-zinc-100:hover, html[data-ui=sombre] .hover\:bg-zinc-200:hover { background-color: #34343c; }
+  html[data-ui=sombre] .bg-zinc-900 { background-color: #f4f4f5; color: #18181b; }
+  html[data-ui=sombre] .text-zinc-900, html[data-ui=sombre] .text-zinc-800 { color: #f4f4f5; }
+  html[data-ui=sombre] .text-zinc-700, html[data-ui=sombre] .text-zinc-600 { color: #cfcfd6; }
+  html[data-ui=sombre] .text-zinc-500 { color: #a1a1aa; }
+  html[data-ui=sombre] .text-zinc-400 { color: #80808a; }
+  html[data-ui=sombre] .border-zinc-200, html[data-ui=sombre] .border-zinc-100, html[data-ui=sombre] .border-zinc-300, html[data-ui=sombre] .divide-zinc-100 > * + *, html[data-ui=sombre] .ring-zinc-200 { border-color: #34343c; --tw-ring-color: #34343c; }
+  html[data-ui=sombre] .bg-amber-50 { background-color: #3a2f10; } html[data-ui=sombre] .bg-emerald-50 { background-color: #10321f; }
+  html[data-ui=sombre] .bg-rose-50 { background-color: #3a1620; } html[data-ui=sombre] .bg-sky-50 { background-color: #10283a; } html[data-ui=sombre] .bg-violet-50 { background-color: #251a3d; }
+  html[data-ui=sombre] input, html[data-ui=sombre] select { color: #f4f4f5; }
+  html[data-ui=sombre] input::placeholder { color: #80808a; }
   html, body { font-family: Inter, "Noto Sans Arabic", system-ui, sans-serif; }
   html[dir=rtl], html[dir=rtl] body { font-family: "Noto Sans Arabic", Inter, system-ui, sans-serif; }
   @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -25,7 +48,7 @@
   ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 9px; }
 </style>
 </head>
-<body class="bg-[#e6e6e8] text-zinc-900 antialiased">
+<body class="bg-[var(--bg)] text-zinc-900 antialiased">
 <div id="root">
   <div id="boot" style="display:grid;place-items:center;min-height:100vh;color:#71717a;font-size:14px">Chargement…</div>
 </div>
@@ -519,21 +542,21 @@ function Icon({ n, s = 18, className = '' }) {
 }
 
 /* ───────────────────────── Composants UI ───────────────────────── */
-const Card = ({ children, className = '' }) => <div className={`rounded-3xl bg-white shadow-[0_2px_14px_rgba(0,0,0,.06)] ${className}`}>{children}</div>;
+const Card = ({ children, className = '' }) => <div className={`ui-card rounded-3xl bg-white shadow-[0_2px_14px_rgba(0,0,0,.06)] ${className}`}>{children}</div>;
 const Btn = ({ children, v = 'primary', className = '', ...p }) => {
-  const cls = { primary: 'bg-[#ffe14a] text-zinc-900 hover:bg-[#ffd60a]', ghost: 'border border-zinc-200 bg-white hover:bg-zinc-50', danger: 'bg-rose-600 text-white hover:bg-rose-500', accent: 'bg-zinc-900 text-white hover:bg-zinc-700', soft: 'bg-zinc-100 text-zinc-800 hover:bg-zinc-200' }[v];
-  return <button {...p} className={`inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition active:scale-[.98] disabled:pointer-events-none disabled:opacity-40 ${cls} ${className}`}>{children}</button>;
+  const cls = { primary: 'bg-[var(--accent)] text-[var(--accent-fg)] hover:bg-[var(--accent-h)]', ghost: 'border border-zinc-200 bg-white hover:bg-zinc-50', danger: 'bg-rose-600 text-white hover:bg-rose-500', accent: 'bg-[var(--ink)] text-[var(--ink-fg)] hover:opacity-85', soft: 'bg-zinc-100 text-zinc-800 hover:bg-zinc-200' }[v];
+  return <button {...p} className={`ui-btn inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition active:scale-[.98] disabled:pointer-events-none disabled:opacity-40 ${cls} ${className}`}>{children}</button>;
 };
 const Badge = ({ tone = 'zinc', children }) => {
   const m = { zinc: 'bg-zinc-100 text-zinc-700', green: 'bg-emerald-50 text-emerald-700', red: 'bg-rose-50 text-rose-700', amber: 'bg-amber-50 text-amber-700', blue: 'bg-sky-50 text-sky-700', violet: 'bg-violet-50 text-violet-700', dark: 'bg-zinc-900 text-white' };
   return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${m[tone]}`}>{children}</span>;
 };
-const Input = ({ className = '', ...p }) => <input {...p} className={`w-full rounded-full border border-transparent bg-zinc-100 px-4 py-2 text-sm outline-none transition focus:border-zinc-300 focus:bg-white focus:ring-2 focus:ring-zinc-900/10 ${className}`} />;
-const Select = ({ children, className = '', ...p }) => <select {...p} className={`w-full rounded-full border border-transparent bg-zinc-100 px-4 py-2 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-zinc-900/10 ${className}`}>{children}</select>;
+const Input = ({ className = '', ...p }) => <input {...p} className={`ui-input w-full rounded-full border border-transparent bg-zinc-100 px-4 py-2 text-sm outline-none transition focus:border-zinc-300 focus:bg-white focus:ring-2 focus:ring-zinc-900/10 ${className}`} />;
+const Select = ({ children, className = '', ...p }) => <select {...p} className={`ui-input w-full rounded-full border border-transparent bg-zinc-100 px-4 py-2 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-zinc-900/10 ${className}`}>{children}</select>;
 const Field = ({ label, children }) => <label className="block"><span className="mb-1 block text-xs font-medium text-zinc-500">{label}</span>{children}</label>;
 const Modal = ({ title, onClose, children, wide }) => (
   <div className="fade-up fixed inset-0 z-50 grid place-items-center bg-zinc-900/40 p-4 backdrop-blur-sm">
-    <div onClick={e => e.stopPropagation()} className={`max-h-[90vh] w-full overflow-auto rounded-3xl bg-white shadow-2xl ${wide ? 'max-w-2xl' : 'max-w-md'}`}>
+    <div onClick={e => e.stopPropagation()} className={`ui-card max-h-[90vh] w-full overflow-auto rounded-3xl bg-white shadow-2xl ${wide ? 'max-w-2xl' : 'max-w-md'}`}>
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-100 bg-white px-5 py-4"><h3 className="font-semibold">{title}</h3><button onClick={onClose} aria-label="Fermer" className="rounded-lg bg-zinc-100 p-1.5 hover:bg-zinc-200"><Icon n="x" /></button></div>
       <div className="p-5">{children}</div>
     </div>
@@ -1964,6 +1987,7 @@ function Inventaire() {
   const [counts, setCounts] = useState({});
   const [onlyDiff, setOnlyDiff] = useState(false);
   const [open, setOpen] = useState({});
+  const [selC, setSelC] = useState({});
   const norm = x => String(x || '').toLowerCase();
   const prods = db.products.filter(p => !q || norm(p.name + p.ar + p.sku).includes(norm(q)));
   const diffOf = v => { const c = counts[v.id]; return c === undefined || c === '' ? null : Math.max(0, Math.floor(Number(c) || 0)) - v.stock; };
@@ -2012,16 +2036,34 @@ function Inventaire() {
                   <div className="text-end text-xs"><div className="tabular text-zinc-500">{t('Stock', 'المخزون')} {p.stock}</div>{nCount > 0 && <div className={nDiff ? 'font-semibold text-amber-600' : 'text-emerald-600'}>{nCount} {t('compté(s)', 'معدود')}{nDiff ? ` · ${nDiff} ${t('écart(s)', 'فرق')}` : ''}</div>}</div>
                   <span className="text-zinc-400">{isOpen ? '▴' : '▾'}</span>
                 </button>
-                {isOpen && <div className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
-                  {vs.map(v => { const d = diffOf(v); const c = v.color ? parseColor(v.color) : null; return (
-                    <div key={v.id} className={`flex items-center gap-2 rounded-2xl px-3 py-1.5 text-sm ${d ? 'bg-amber-50' : 'bg-zinc-50'}`}>
-                      {c && <span className="inline-block h-3.5 w-3.5 shrink-0 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}
-                      <span className="min-w-0 flex-1 truncate">{vLabel(v, lang) || t('Standard', 'قياسي')}</span>
-                      <span className="tabular w-10 text-end text-xs text-zinc-500" title={t('Stock système', 'مخزون النظام')}>{v.stock}</span>
-                      <input type="number" min="0" value={counts[v.id] === undefined ? '' : counts[v.id]} onChange={e => setCounts({ ...counts, [v.id]: e.target.value })} placeholder="—" className="tabular w-16 rounded-full border border-zinc-200 bg-white px-2 py-1 text-center text-sm outline-none focus:ring-2 focus:ring-zinc-900/10" />
-                      <span className={`tabular w-10 text-end text-xs font-semibold ${d > 0 ? 'text-emerald-600' : d < 0 ? 'text-rose-600' : 'text-zinc-300'}`}>{d === null ? '' : d > 0 ? '+' + d : d}</span>
-                    </div>); })}
-                </div>}
+                {isOpen && (() => {
+                  const cols = [...new Set(p.variants.map(v => v.color || ''))];
+                  const hasCol = cols.some(Boolean);
+                  const cur = !hasCol ? '' : (selC[p.id] !== undefined && cols.includes(selC[p.id]) ? selC[p.id] : (cols.length === 1 ? cols[0] : null));
+                  const sizesOf = cur === null ? [] : vs.filter(v => (v.color || '') === cur);
+                  return (
+                    <div className="mt-2">
+                      {hasCol && <div className="mb-2 flex flex-wrap gap-1.5">
+                        {cols.map(col => { const c = col ? parseColor(col) : null; const vv = p.variants.filter(v => (v.color || '') === col); const n1 = vv.filter(v => diffOf(v) !== null).length; const n2 = vv.filter(v => diffOf(v) !== null && diffOf(v) !== 0).length; const on = cur === col; return (
+                          <button key={col || '_'} onClick={() => setSelC({ ...selC, [p.id]: col })} className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ${on ? 'bg-[var(--ink)] text-[var(--ink-fg)]' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'}`}>
+                            {c && <span className="inline-block h-3.5 w-3.5 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}
+                            {c ? ((lang === 'ar' && c.ar) || c.label) : t('Sans couleur', 'بدون لون')}
+                            {n1 > 0 && <span className={`rounded-full px-1.5 text-[10px] ${n2 ? 'bg-amber-400 text-zinc-900' : 'bg-emerald-500 text-white'}`}>{n1}/{vv.length}</span>}
+                          </button>); })}
+                      </div>}
+                      {cur === null && <div className="rounded-2xl bg-zinc-50 p-3 text-center text-xs text-zinc-500">{t('Choisissez une couleur pour voir les tailles', 'اختر لوناً لعرض المقاسات')}</div>}
+                      {cur !== null && <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+                        {sizesOf.map(v => { const d = diffOf(v); return (
+                          <div key={v.id} className={`flex items-center gap-2 rounded-2xl px-3 py-1.5 text-sm ${d ? 'bg-amber-50' : 'bg-zinc-50'}`}>
+                            <span className="min-w-0 flex-1 truncate font-medium">{v.size || t('Standard', 'قياسي')}</span>
+                            <span className="tabular w-10 text-end text-xs text-zinc-500" title={t('Stock système', 'مخزون النظام')}>{v.stock}</span>
+                            <input type="number" min="0" value={counts[v.id] === undefined ? '' : counts[v.id]} onChange={e => setCounts({ ...counts, [v.id]: e.target.value })} placeholder="—" className="tabular w-16 rounded-full border border-zinc-200 bg-white px-2 py-1 text-center text-sm outline-none focus:ring-2 focus:ring-zinc-900/10" />
+                            <span className={`tabular w-10 text-end text-xs font-semibold ${d > 0 ? 'text-emerald-600' : d < 0 ? 'text-rose-600' : 'text-zinc-300'}`}>{d === null ? '' : d > 0 ? '+' + d : d}</span>
+                          </div>); })}
+                      </div>}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -2073,6 +2115,120 @@ function Receptions() {
   );
 }
 
+const THEMES = [
+  { k: 'jaune', fr: 'Clair · Jaune', ar: 'فاتح · أصفر', accent: '#ffe14a', h: '#ffd60a', fg: '#18181b', bg: '#e6e6e8', ink: '#18181b' },
+  { k: 'classique', fr: 'Classique ERP', ar: 'كلاسيكي', ui: 'classique', accent: '#18181b', h: '#3f3f46', fg: '#ffffff', bg: '#f4f4f5', ink: '#18181b', rCard: '10px', rBtn: '8px', rInput: '8px' },
+  { k: 'sombre', fr: 'Sombre', ar: 'داكن', ui: 'sombre', dark: true, accent: '#ffe14a', h: '#ffd60a', fg: '#18181b', bg: '#0f0f12', ink: '#ffe14a', inkFg: '#18181b' },
+  { k: 'luxe', fr: 'Luxe doré', ar: 'فاخر ذهبي', ui: 'luxe', accent: '#c9a24b', h: '#b8913c', fg: '#1a1408', bg: '#f1eadf', ink: '#1a1408', rCard: '6px', rBtn: '3px', rInput: '3px', font: "'Playfair Display', Georgia, serif" },
+  { k: 'pop', fr: 'Pop coloré', ar: 'ملوّن', ui: 'pop', accent: '#ff3d8b', h: '#ff1f78', fg: '#ffffff', bg: '#ffd9ec', ink: '#2b1b6b', rCard: '34px' },
+  { k: 'ocean', fr: 'Bleu océan', ar: 'أزرق المحيط', accent: '#7cc4ff', h: '#5db4fb', fg: '#06243d', bg: '#dce8f3', ink: '#0f2a4a' },
+  { k: 'menthe', fr: 'Vert menthe', ar: 'أخضر نعناعي', accent: '#8fe3b0', h: '#6fd699', fg: '#07301a', bg: '#dcece3', ink: '#0f3b25' },
+  { k: 'rose', fr: 'Rose poudré', ar: 'وردي', accent: '#ffb3c7', h: '#ff98b4', fg: '#4a0d22', bg: '#f2e1e7', ink: '#5a1230' },
+  { k: 'violet', fr: 'Violet doux', ar: 'بنفسجي', accent: '#c6b5ff', h: '#b09cff', fg: '#1e1050', bg: '#e5e1f2', ink: '#2a1a6e' },
+  { k: 'orange', fr: 'Orange sable', ar: 'برتقالي رملي', accent: '#ffb866', h: '#ffa63d', fg: '#3d1e00', bg: '#f0e6da', ink: '#4a2a08' },
+];
+const svgUrl = x => `url("data:image/svg+xml,${encodeURIComponent(x)}")`;
+const PAGE_BGS = [
+  { k: 'uni', fr: 'Uni', ar: 'سادة', css: 'none' },
+  { k: 'degrade', fr: 'Dégradé doux', ar: 'تدرج ناعم', css: 'linear-gradient(135deg, var(--bg), color-mix(in srgb, var(--accent) 38%, var(--bg)))', size: 'cover' },
+  { k: 'cintres', fr: 'Cintres boutique', ar: 'علاقات الملابس', css: svgUrl("<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><g fill='none' stroke='rgba(0,0,0,.10)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M48 24a5 5 0 1 1 5 5l-5 4'/><path d='M48 33L74 50a4 4 0 0 1-2 7H24a4 4 0 0 1-2-7z'/></g></svg>"), size: '96px' },
+  { k: 'denim', fr: 'Tissu denim', ar: 'قماش الجينز', css: svgUrl("<svg xmlns='http://www.w3.org/2000/svg' width='6' height='6'><path d='M0 6L6 0' stroke='rgba(0,0,0,.08)' stroke-width='1'/><path d='M0 0L6 6' stroke='rgba(255,255,255,.35)' stroke-width='.6'/></svg>"), size: '6px' },
+  { k: 'rayures', fr: 'Rayures', ar: 'خطوط', css: svgUrl("<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><rect width='14' height='28' fill='rgba(0,0,0,.045)'/></svg>"), size: '28px' },
+  { k: 'pois', fr: 'Pois', ar: 'نقاط', css: svgUrl("<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30'><circle cx='15' cy='15' r='3.2' fill='rgba(0,0,0,.09)'/></svg>"), size: '30px' },
+  { k: 'vagues', fr: 'Vagues', ar: 'أمواج', css: svgUrl("<svg xmlns='http://www.w3.org/2000/svg' width='64' height='24'><path d='M0 12Q16 0 32 12T64 12' fill='none' stroke='rgba(0,0,0,.09)' stroke-width='2'/></svg>"), size: '64px 24px' },
+  { k: 'geo', fr: 'Losanges', ar: 'معينات', css: svgUrl("<svg xmlns='http://www.w3.org/2000/svg' width='44' height='44'><path d='M22 3L41 22L22 41L3 22Z' fill='none' stroke='rgba(0,0,0,.09)' stroke-width='1.6'/></svg>"), size: '44px' },
+];
+const getBg = () => { try { return localStorage.getItem('magasin-bg') || 'uni'; } catch (e) { return 'uni'; } };
+function applyBg(k) {
+  const b = document.body && document.body.style; if (!b) return;
+  let photo = null; if (k === 'photo') { try { photo = localStorage.getItem('magasin-bg-photo'); } catch (e) {} }
+  if (k === 'photo' && photo) { b.backgroundImage = `url(${photo})`; b.backgroundSize = 'cover'; b.backgroundPosition = 'center'; b.backgroundAttachment = 'fixed'; return; }
+  const x = PAGE_BGS.find(y => y.k === k) || PAGE_BGS[0];
+  b.backgroundImage = x.css; b.backgroundSize = x.size || 'auto'; b.backgroundPosition = 'center'; b.backgroundAttachment = 'fixed';
+}
+const shrinkToDataUrl = file => new Promise((ok, ko) => {
+  const img = new Image(), u = URL.createObjectURL(file);
+  img.onload = () => { const r = Math.min(1, 1600 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * r); c.height = Math.round(img.height * r); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(u); ok(c.toDataURL('image/jpeg', 0.72)); };
+  img.onerror = () => ko(new Error('IMG')); img.src = u;
+});
+function applyTheme(k) {
+  const th = THEMES.find(x => x.k === k) || THEMES[0];
+  const el = document.documentElement, r = el.style;
+  r.setProperty('--accent', th.accent); r.setProperty('--accent-h', th.h); r.setProperty('--accent-fg', th.fg); r.setProperty('--bg', th.bg); r.setProperty('--ink', th.ink);
+  r.setProperty('--ink-fg', th.inkFg || '#ffffff');
+  r.setProperty('--r-card', th.rCard || '24px'); r.setProperty('--r-btn', th.rBtn || '9999px'); r.setProperty('--r-input', th.rInput || '9999px');
+  r.setProperty('--font-head', th.font || 'inherit');
+  if (th.ui) el.setAttribute('data-ui', th.ui); else el.removeAttribute('data-ui');
+}
+const getTheme = () => { try { return localStorage.getItem('magasin-theme') || 'jaune'; } catch (e) { return 'jaune'; } };
+try { applyTheme(getTheme()); } catch (e) {}
+try { document.addEventListener('DOMContentLoaded', () => applyBg(getBg())); if (document.body) applyBg(getBg()); } catch (e) {}
+function ThemeThumb({ th }) {
+  const card = th.dark ? '#1c1c21' : '#ffffff', line = th.dark ? '#3a3a42' : '#e4e4e7';
+  const rc = `calc(${th.rCard || '24px'} * .4)`, rb = `calc(${th.rBtn || '9999px'} * .4)`;
+  return (
+    <div className="flex h-24 gap-1.5 overflow-hidden rounded-xl p-1.5" style={{ background: th.bg }}>
+      <div className="flex w-7 shrink-0 flex-col gap-1 p-1" style={{ background: card, borderRadius: rc }}>
+        <span className="h-2.5" style={{ background: th.ink, borderRadius: rb }} /><span className="h-2.5" style={{ background: line, borderRadius: rb }} /><span className="h-2.5" style={{ background: line, borderRadius: rb }} />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div className="p-1.5" style={{ background: card, borderRadius: rc }}>
+          <div className="text-[11px] font-extrabold leading-none" style={{ color: th.dark ? '#f4f4f5' : '#18181b', fontFamily: th.font || 'inherit' }}>Ventes</div>
+          <div className="mt-1 h-1.5 w-3/4" style={{ background: line, borderRadius: rb }} />
+        </div>
+        <div className="flex flex-1 items-end gap-1.5 p-1.5" style={{ background: card, borderRadius: rc }}>
+          <span className="h-3.5 flex-1" style={{ background: th.accent, borderRadius: rb }} /><span className="h-3.5 w-6" style={{ background: line, borderRadius: rb }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+function ThemePicker() {
+  const { t, lang, toast } = useApp();
+  const [open, setOpen] = useState(false);
+  const [cur, setCur] = useState(getTheme);
+  const [bg, setBg] = useState(getBg);
+  const pick = k => { setCur(k); applyTheme(k); try { localStorage.setItem('magasin-theme', k); } catch (e) {} };
+  const pickBg = k => { setBg(k); applyBg(k); try { localStorage.setItem('magasin-bg', k); } catch (e) {} };
+  const upload = async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    try { const d = await shrinkToDataUrl(f); localStorage.setItem('magasin-bg-photo', d); pickBg('photo'); }
+    catch (err) { toast(t('Photo trop lourde ou illisible', 'الصورة ثقيلة أو غير مقروءة'), 'err'); }
+  };
+  const photoOn = (() => { try { return !!localStorage.getItem('magasin-bg-photo'); } catch (e) { return false; } })();
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(!open)} title={t('Thème', 'المظهر')} className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">🎨 <span className="hidden sm:inline">{t('Thème', 'المظهر')}</span></button>
+      {open && (
+        <div className="absolute end-0 z-40 mt-2 max-h-[80vh] w-[22rem] max-w-[92vw] overflow-auto rounded-3xl bg-white p-3 shadow-2xl ring-1 ring-black/5">
+          <div className="flex items-center justify-between px-1 pb-1"><span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">{t('Thèmes (style de l’application)', 'المظاهر (شكل التطبيق)')}</span><button onClick={() => setOpen(false)} className="text-xs text-zinc-400 hover:text-zinc-700">✕</button></div>
+          <div className="grid grid-cols-2 gap-2">
+            {THEMES.map(th => (
+              <button key={th.k} onClick={() => pick(th.k)} className={`rounded-2xl p-1.5 text-start transition hover:bg-zinc-100 ${cur === th.k ? 'bg-zinc-100 ring-2 ring-zinc-900' : ''}`}>
+                <ThemeThumb th={th} />
+                <span className="mt-1 flex items-center justify-between px-1 text-[11px] font-semibold text-zinc-700"><span className="truncate">{lang === 'ar' ? th.ar : th.fr}</span>{cur === th.k && <Icon n="check" s={12} />}</span>
+              </button>
+            ))}
+          </div>
+          <div className="px-1 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">{t('Fond d’écran', 'خلفية الشاشة')}</div>
+          <div className="grid grid-cols-3 gap-2">
+            {PAGE_BGS.map(b => (
+              <button key={b.k} onClick={() => pickBg(b.k)} className="text-center">
+                <span className={`block h-14 rounded-2xl ring-1 ${bg === b.k ? 'ring-2 ring-zinc-900' : 'ring-zinc-200'}`} style={{ backgroundColor: 'var(--bg)', backgroundImage: b.css, backgroundSize: b.size === 'cover' ? 'cover' : b.size || 'auto' }} />
+                <span className="mt-1 block truncate text-[10px] text-zinc-600">{lang === 'ar' ? b.ar : b.fr}</span>
+              </button>
+            ))}
+            <label className="cursor-pointer text-center">
+              <span className={`grid h-14 place-items-center rounded-2xl bg-zinc-100 text-xl ring-1 ${bg === 'photo' ? 'ring-2 ring-zinc-900' : 'ring-zinc-200'}`}>📷</span>
+              <span className="mt-1 block truncate text-[10px] text-zinc-600">{photoOn ? t('Ma photo (changer)', 'صورتي (تغيير)') : t('Ma photo…', 'صورتي…')}</span>
+              <input type="file" accept="image/*" className="hidden" onChange={upload} />
+            </label>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 function PosEntry() { const { role } = useApp(); return role === 'admin' ? <Hub tabs={VENTES_TABS} initial="comptoir" /> : <POS />; }
 function Hub({ tabs, initial }) {
   const { t, lang } = useApp();
@@ -2081,8 +2237,8 @@ function Hub({ tabs, initial }) {
   const go = k => { setTab(k); setSeen(x => ({ ...x, [k]: true })); };
   return (
     <div>
-      <div className="mb-5 inline-flex max-w-full flex-wrap gap-1 rounded-full bg-white p-1.5 shadow-sm">
-        {tabs.map(x => <button key={x.k} onClick={() => go(x.k)} className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${tab === x.k ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800'}`}><Icon n={x.ic} s={15} />{lang === 'ar' ? x.ar : x.fr}</button>)}
+      <div className="ui-pill mb-5 inline-flex max-w-full flex-wrap gap-1 rounded-full bg-white p-1.5 shadow-sm">
+        {tabs.map(x => <button key={x.k} onClick={() => go(x.k)} className={`ui-pill flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${tab === x.k ? 'bg-[var(--ink)] text-[var(--ink-fg)]' : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800'}`}><Icon n={x.ic} s={15} />{lang === 'ar' ? x.ar : x.fr}</button>)}
       </div>
       {tabs.map(x => seen[x.k] && <div key={x.k} className={tab === x.k ? '' : 'hidden'}><x.C /></div>)}
     </div>
@@ -2194,15 +2350,16 @@ function Shell({ session, lang, setLang }) {
   return (
     <Ctx.Provider value={ctx}>
       <div className="flex min-h-screen flex-col">
-        <header className="sticky top-0 z-30 bg-[#e6e6e8]/85 backdrop-blur">
+        <header className="sticky top-0 z-30 backdrop-blur" style={{ background: 'color-mix(in srgb, var(--bg) 85%, transparent)' }}>
           <div className="flex h-14 items-center gap-3 px-4">
             <div className="flex items-center gap-2.5">
-              <div className="text-xl font-black uppercase tracking-tight">DJ</div>
+              <div className="brand text-xl font-black uppercase tracking-tight">DJ</div>
               <div className="hidden leading-tight sm:block"><div className="text-sm font-extrabold uppercase tracking-wide">Magasin</div><div className="text-[11px] text-zinc-500">{t('Gestion du magasin', 'إدارة المتجر')}</div></div>
             </div>
             <div className="ms-auto flex items-center gap-2">
               <div className="hidden text-end leading-tight sm:block"><div className="max-w-[180px] truncate text-xs font-semibold">{profile.full_name || session.user.email}</div><div className="text-[11px] text-zinc-500">{(ROLES.find(r => r.k === role) || {})[lang === 'ar' ? 'ar' : 'fr']}</div></div>
               <button onClick={() => setLang(lang === 'fr' ? 'ar' : 'fr')} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50"><Icon n="globe" s={14} />{lang === 'fr' ? 'عربي' : 'FR'}</button>
+              <ThemePicker />
               {role === 'admin' || role === 'vendeur' ? <Notifs /> : null}
               <button onClick={() => act(async () => {}, t('Données actualisées', 'تم تحديث البيانات'))} title={t('Actualiser', 'تحديث')} className={`rounded-xl p-2 text-zinc-500 hover:bg-zinc-100 ${busy ? 'animate-spin' : ''}`}><Icon n="refresh" s={16} /></button>
               <button onClick={logout} className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">{t('Déconnexion', 'خروج')}</button>
@@ -2211,10 +2368,10 @@ function Shell({ session, lang, setLang }) {
         </header>
 
         <div className="flex flex-1">
-          <aside className="hidden w-60 shrink-0 flex-col gap-1 p-3 md:flex">
+          <aside className="m-3 me-0 hidden w-60 shrink-0 flex-col gap-1 self-start rounded-3xl bg-white/55 p-3 backdrop-blur md:flex">
             <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">{lang === 'ar' ? ROLE_LABEL[role][1] : ROLE_LABEL[role][0]}</div>
             {NAV[role].map(n => (
-              <button key={n.k} onClick={() => setView(n.k)} className={`flex items-center gap-2.5 rounded-full px-4 py-2.5 text-sm font-semibold transition ${navKey === n.k ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-white'}`}>
+              <button key={n.k} onClick={() => setView(n.k)} className={`ui-pill flex items-center gap-2.5 rounded-full px-4 py-2.5 text-sm font-semibold transition ${navKey === n.k ? 'bg-[var(--ink)] text-[var(--ink-fg)]' : 'text-zinc-600 hover:bg-white'}`}>
                 <Icon n={n.ic} s={16} />{lang === 'ar' ? n.ar : n.fr}
               </button>
             ))}
@@ -2222,7 +2379,7 @@ function Shell({ session, lang, setLang }) {
           </aside>
           <main className="min-w-0 flex-1 p-4 md:p-6">
             <div className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 md:hidden">
-              {NAV[role].map(n => <button key={n.k} onClick={() => setView(n.k)} className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${navKey === n.k ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-600 ring-1 ring-zinc-200'}`}><Icon n={n.ic} s={13} />{lang === 'ar' ? n.ar : n.fr}</button>)}
+              {NAV[role].map(n => <button key={n.k} onClick={() => setView(n.k)} className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${navKey === n.k ? 'bg-[var(--ink)] text-[var(--ink-fg)]' : 'bg-white text-zinc-600 ring-1 ring-zinc-200'}`}><Icon n={n.ic} s={13} />{lang === 'ar' ? n.ar : n.fr}</button>)}
             </div>
             <div key={role + view} className="fade-up"><View /></div>
           </main>
