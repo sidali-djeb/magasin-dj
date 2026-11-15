@@ -2116,7 +2116,7 @@ function Inventaire() {
   };
   const printSheet = () => {
     const rows = prods.flatMap(p => p.variants.map(v => `<tr><td>${escH(p.name)}</td><td>${escH(vLabel(v, 'fr') || 'Standard')}</td><td>${escH(v.sku)}</td><td class="r">${v.stock}</td><td></td></tr>`)).join('');
-    printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>Inventaire</title><style>${A4_CSS}</style></head><body><h1>Feuille d’inventaire</h1><div class="muted">DJEB'S OFFICIAL · ${today()}</div><table><thead><tr><th>Produit</th><th>Variante</th><th>SKU</th><th class="r">Système</th><th style="width:90px">Compté</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
+    printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>Inventaire</title><style>${A4_CSS}</style></head><body><div style="display:flex;align-items:center;gap:10px;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px"><img src="${LOGO_EMB}" style="height:48px"><b style="font-size:16px;letter-spacing:1px">DJEB'S OFFICIAL</b></div><h1>Feuille d’inventaire</h1><div class="muted">DJEB'S OFFICIAL · ${today()}</div><table><thead><tr><th>Produit</th><th>Variante</th><th>SKU</th><th class="r">Système</th><th style="width:90px">Compté</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
   };
   return (
     <div>
@@ -2203,7 +2203,7 @@ function Receptions() {
   });
   const print = r => {
     const body = r.lines.map(l => `<tr><td>${escH(l.name)}${l.label ? ' (' + escH(l.label) + ')' : ''}</td><td class="r">${l.qty}</td><td class="r">${l.cost}</td><td class="r">${l.qty * l.cost}</td></tr>`).join('');
-    printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>${r.no}</title><style>${A4_CSS}</style></head><body><h1>Bon de réception ${r.no}</h1><div class="muted">DJEB'S OFFICIAL · ${escH(r.at.slice(0, 10))}</div><h2>Fournisseur : ${escH(r.supName)} · Commande ${escH(r.poRef)}</h2><div>Reçu par : <b>${escH(r.who)}</b></div><table><thead><tr><th>Article</th><th class="r">Qté reçue</th><th class="r">Coût unit. (DA)</th><th class="r">Total (DA)</th></tr></thead><tbody>${body}<tr><th>Total</th><th class="r">${r.qty}</th><th></th><th class="r">${r.value}</th></tr></tbody></table><p style="margin-top:40px">Signature : ____________________</p></body></html>`);
+    printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>${r.no}</title><style>${A4_CSS}</style></head><body><div style="display:flex;align-items:center;gap:10px;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px"><img src="${LOGO_EMB}" style="height:48px"><b style="font-size:16px;letter-spacing:1px">DJEB'S OFFICIAL</b></div><h1>Bon de réception ${r.no}</h1><div class="muted">DJEB'S OFFICIAL · ${escH(r.at.slice(0, 10))}</div><h2>Fournisseur : ${escH(r.supName)} · Commande ${escH(r.poRef)}</h2><div>Reçu par : <b>${escH(r.who)}</b></div><table><thead><tr><th>Article</th><th class="r">Qté reçue</th><th class="r">Coût unit. (DA)</th><th class="r">Total (DA)</th></tr></thead><tbody>${body}<tr><th>Total</th><th class="r">${r.qty}</th><th></th><th class="r">${r.value}</th></tr></tbody></table><p style="margin-top:40px">Signature : ____________________</p></body></html>`);
   };
   return (
     <div>
