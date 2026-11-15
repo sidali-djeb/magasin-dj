@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Magasin DJ — ERP & Site Web</title>
 <meta name="description" content="Magasin DJ : gestion de stock, ventes, achats, fidélité et bons d'achat, avec site web officiel." />
-<meta name="theme-color" content="#18181b" />
+<meta name="theme-color" content="#e6e6e8" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2318181b'/%3E%3Ctext x='16' y='22' font-family='Arial,sans-serif' font-size='15' font-weight='800' text-anchor='middle' fill='white'%3EDJ%3C/text%3E%3C/svg%3E" />
 <!-- Version Tailwind épinglée : le rendu ne change pas si la CDN publie une nouvelle version -->
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
@@ -25,7 +25,7 @@
   ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 9px; }
 </style>
 </head>
-<body class="bg-zinc-50 text-zinc-900 antialiased">
+<body class="bg-[#e6e6e8] text-zinc-900 antialiased">
 <div id="root">
   <div id="boot" style="display:grid;place-items:center;min-height:100vh;color:#71717a;font-size:14px">Chargement…</div>
 </div>
@@ -86,7 +86,7 @@ const PO_TO = Object.fromEntries(Object.entries(PO_FROM).map(([k, v]) => [v, k])
 const BGS = ['bg-slate-100', 'bg-rose-100', 'bg-amber-100', 'bg-emerald-100', 'bg-yellow-100', 'bg-blue-100', 'bg-indigo-100', 'bg-violet-100', 'bg-lime-100', 'bg-red-100'];
 const bgOf = k => BGS[[...String(k)].reduce((a, c) => a + c.charCodeAt(0), 0) % BGS.length];
 const cap = x => x ? x.charAt(0).toUpperCase() + x.slice(1) : 'Bronze';
-const EMPTY_DB = { products: [], suppliers: [], clients: [], sales: [], purchases: [], vouchers: [], rules: DEFAULT_RULES };
+const EMPTY_DB = { products: [], suppliers: [], clients: [], sales: [], purchases: [], vouchers: [], receipts: [], staff: [], rules: DEFAULT_RULES };
 
 const ERR = {
   INSUFFICIENT_STOCK: ['Stock insuffisant', 'مخزون غير كافٍ'], INSUFFICIENT_POINTS: ['Points insuffisants', 'نقاط غير كافية'],
@@ -116,7 +116,7 @@ const errText = (e, t) => {
 async function loadAll(role) {
   const rows = async q => (await must(q)) || [];
   const prodQ = role === 'client' ? sb.from('storefront_products').select('*').order('name') : sb.from('products').select('*').eq('active', true).order('name');
-  const [prods, sups, cls, sales, pos, vs, rl, vars, staff] = await Promise.all([
+  const [prods, sups, cls, sales, pos, vs, rl, vars, staff, mvs] = await Promise.all([
     rows(prodQ),
     rows(sb.from('suppliers').select('*').order('name')),
     rows(sb.from('clients').select('*').order('name')),
@@ -125,8 +125,12 @@ async function loadAll(role) {
     rows(sb.from('vouchers').select('*').order('created_at', { ascending: false })),
     rows(sb.from('loyalty_rules').select('*').eq('id', 1)),
     rows(role === 'client' ? sb.from('storefront_variants').select('*') : sb.from('product_variants').select('*').eq('active', true).order('created_at')),
-    role === 'admin' ? sb.rpc('admin_list_users').then(r => r.data || []) : Promise.resolve([]),
+    role === 'admin' ? (async () => { const r = await sb.rpc('admin_list_users'); return r.data || []; })() : Promise.resolve([]),
+    role === 'admin' ? (async () => { return (await sb.from('stock_movements').select('variant_id,product_id,delta,ref_id,created_at').eq('reason', 'purchase_receipt').order('created_at', { ascending: true }).limit(2000)).data || []; })() : Promise.resolve([]),
   ]);
+  const rcMap = new Map();
+  mvs.forEach(m => { const k = m.ref_id + '|' + m.created_at; if (!rcMap.has(k)) rcMap.set(k, { id: k, poId: m.ref_id, at: m.created_at, lines: [] }); rcMap.get(k).lines.push({ vid: m.variant_id, pid: m.product_id, qty: m.delta }); });
+  const receipts = [...rcMap.values()].map((r, i) => ({ ...r, no: 'BR-' + String(i + 1).padStart(4, '0') })).reverse();
   const staffName = Object.fromEntries(staff.map(u => [u.id, u.full_name || (u.email || '').split('@')[0]]));
   const pPrice = Object.fromEntries(prods.map(x => [x.id, Number(x.price)]));
   const byP = {};
@@ -141,6 +145,7 @@ async function loadAll(role) {
     products: prods.map(p => ({ id: p.id, sku: p.sku, name: p.name, ar: p.name_ar || p.name, cat: CAT_FROM[p.category] || 'Accessoires', price: Number(p.price), cost: Number(p.cost || 0), stock: p.stock, reorder: p.reorder_level, sup: p.supplier_id, fabric: p.fabric || '', color: uniqJoin(byP[p.id], 'color'), sizes: uniqJoin(byP[p.id], 'size'), variants: byP[p.id] || [], emoji: p.emoji || '🏷️', img: p.image_url || '', bg: bgOf(p.sku) })),
     suppliers: sups.map(x => ({ id: x.id, name: x.name, contact: x.contact_name || '', email: x.email || '', city: x.city || '', leadDays: x.lead_days, rating: Number(x.rating || 0) })),
     clients,
+    receipts,
     staff: staff.filter(u => u.role === 'admin' || u.role === 'vendeur').map(u => ({ id: u.id, name: staffName[u.id], role: u.role })),
     sales: sales.map(x => ({
       id: x.id, ref: x.ref, date: x.created_at.slice(0, 10), channel: x.channel === 'web' ? 'Web' : 'POS', clientId: x.client_id,
@@ -514,21 +519,21 @@ function Icon({ n, s = 18, className = '' }) {
 }
 
 /* ───────────────────────── Composants UI ───────────────────────── */
-const Card = ({ children, className = '' }) => <div className={`rounded-2xl border border-zinc-200 bg-white shadow-sm ${className}`}>{children}</div>;
+const Card = ({ children, className = '' }) => <div className={`rounded-3xl bg-white shadow-[0_2px_14px_rgba(0,0,0,.06)] ${className}`}>{children}</div>;
 const Btn = ({ children, v = 'primary', className = '', ...p }) => {
-  const cls = { primary: 'bg-zinc-900 text-white hover:bg-zinc-800', ghost: 'border border-zinc-200 bg-white hover:bg-zinc-50', danger: 'bg-rose-600 text-white hover:bg-rose-500', accent: 'bg-emerald-600 text-white hover:bg-emerald-500', soft: 'bg-zinc-100 text-zinc-800 hover:bg-zinc-200' }[v];
-  return <button {...p} className={`inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-sm font-medium transition active:scale-[.98] disabled:pointer-events-none disabled:opacity-40 ${cls} ${className}`}>{children}</button>;
+  const cls = { primary: 'bg-[#ffe14a] text-zinc-900 hover:bg-[#ffd60a]', ghost: 'border border-zinc-200 bg-white hover:bg-zinc-50', danger: 'bg-rose-600 text-white hover:bg-rose-500', accent: 'bg-zinc-900 text-white hover:bg-zinc-700', soft: 'bg-zinc-100 text-zinc-800 hover:bg-zinc-200' }[v];
+  return <button {...p} className={`inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition active:scale-[.98] disabled:pointer-events-none disabled:opacity-40 ${cls} ${className}`}>{children}</button>;
 };
 const Badge = ({ tone = 'zinc', children }) => {
   const m = { zinc: 'bg-zinc-100 text-zinc-700', green: 'bg-emerald-50 text-emerald-700', red: 'bg-rose-50 text-rose-700', amber: 'bg-amber-50 text-amber-700', blue: 'bg-sky-50 text-sky-700', violet: 'bg-violet-50 text-violet-700', dark: 'bg-zinc-900 text-white' };
   return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${m[tone]}`}>{children}</span>;
 };
-const Input = ({ className = '', ...p }) => <input {...p} className={`w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-zinc-400 focus:ring-2 focus:ring-zinc-900/10 ${className}`} />;
-const Select = ({ children, className = '', ...p }) => <select {...p} className={`w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-900/10 ${className}`}>{children}</select>;
+const Input = ({ className = '', ...p }) => <input {...p} className={`w-full rounded-full border border-transparent bg-zinc-100 px-4 py-2 text-sm outline-none transition focus:border-zinc-300 focus:bg-white focus:ring-2 focus:ring-zinc-900/10 ${className}`} />;
+const Select = ({ children, className = '', ...p }) => <select {...p} className={`w-full rounded-full border border-transparent bg-zinc-100 px-4 py-2 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-zinc-900/10 ${className}`}>{children}</select>;
 const Field = ({ label, children }) => <label className="block"><span className="mb-1 block text-xs font-medium text-zinc-500">{label}</span>{children}</label>;
 const Modal = ({ title, onClose, children, wide }) => (
   <div className="fade-up fixed inset-0 z-50 grid place-items-center bg-zinc-900/40 p-4 backdrop-blur-sm">
-    <div onClick={e => e.stopPropagation()} className={`max-h-[90vh] w-full overflow-auto rounded-2xl bg-white shadow-xl ${wide ? 'max-w-2xl' : 'max-w-md'}`}>
+    <div onClick={e => e.stopPropagation()} className={`max-h-[90vh] w-full overflow-auto rounded-3xl bg-white shadow-2xl ${wide ? 'max-w-2xl' : 'max-w-md'}`}>
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-100 bg-white px-5 py-4"><h3 className="font-semibold">{title}</h3><button onClick={onClose} aria-label="Fermer" className="rounded-lg bg-zinc-100 p-1.5 hover:bg-zinc-200"><Icon n="x" /></button></div>
       <div className="p-5">{children}</div>
     </div>
@@ -536,7 +541,7 @@ const Modal = ({ title, onClose, children, wide }) => (
 );
 const PageTitle = ({ title, sub, right }) => (
   <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-    <div><h1 className="text-2xl font-bold tracking-tight">{title}</h1>{sub && <p className="mt-0.5 text-sm text-zinc-500">{sub}</p>}</div>
+    <div><h1 className="text-3xl font-extrabold tracking-tight">{title}</h1>{sub && <p className="mt-0.5 text-sm text-zinc-500">{sub}</p>}</div>
     {right}
   </div>
 );
@@ -644,12 +649,16 @@ function printTicket(sale, money, t, lang) {
     <tr class="tot"><td>${escH(t('TOTAL', 'الإجمالي'))}</td><td class="r">${escH(money(sale.total))}</td></tr>
     ${sale.pointsEarned ? ln(t('Points gagnés', 'نقاط مكتسبة'), '+' + sale.pointsEarned) : ''}
     </table><hr><div class="c">${escH(t('Merci de votre visite', 'شكراً لزيارتكم'))}</div></body></html>`;
+  printHTML(html);
+}
+function printHTML(html) {
   const fr = document.createElement('iframe');
   fr.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0';
   document.body.appendChild(fr);
   const d = fr.contentWindow.document; d.open(); d.write(html); d.close();
   setTimeout(() => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch (e) {} setTimeout(() => fr.remove(), 60000); }, 300);
 }
+const A4_CSS = '@page{size:A4;margin:12mm}body{font:12px/1.4 Arial,sans-serif;color:#000}h1{font-size:20px;margin:0 0 4px}h2{font-size:14px;margin:14px 0 4px}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border:1px solid #999;padding:4px 6px;text-align:left}th{background:#eee}.r{text-align:right}.muted{color:#555}';
 function ReceiptModal({ sale, onClose }) {
   const { t, money, lang, toast } = useApp();
   const txt = [`${t('Magasin DJ', 'متجر DJ')} — ${sale.ref}`, sale.date, sale.clientName, '', ...sale.lines.map(l => `${l.qty} x ${lang === 'ar' ? l.ar : l.name} = ${money(l.qty * l.price)}`), '', `${t('Sous-total', 'المجموع الفرعي')}: ${money(sale.subtotal)}`, sale.tierDisc ? `${t('Remise palier', 'خصم الفئة')}: -${money(sale.tierDisc)}` : '', sale.voucherDisc ? `${t('Bon', 'قسيمة')} ${sale.voucher}: -${money(sale.voucherDisc)}` : '', sale.pointsDisc ? `${t('Points utilisés', 'نقاط مستعملة')}: -${money(sale.pointsDisc)}` : '', `${t('TOTAL', 'الإجمالي')}: ${money(sale.total)}`, sale.pointsEarned ? `${t('Points gagnés', 'نقاط مكتسبة')}: +${sale.pointsEarned}` : ''].filter(x => x !== '').join('\n');
@@ -941,7 +950,7 @@ function StockView({ readonly }) {
         )}
         <div className="grid grid-cols-2 gap-3 p-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {rows.map(p => (
-            <div key={p.id} className={`flex flex-col rounded-2xl border bg-white p-2.5 transition hover:shadow-md ${sel[p.id] ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-200'}`}>
+            <div key={p.id} className={`flex flex-col rounded-3xl border bg-white p-3 transition hover:shadow-md ${sel[p.id] ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-200'}`}>
               <div className="relative">
                 <PhotoButton p={p} readonly={readonly} size="h-24 w-full" txt="text-4xl" />
                 {!readonly && <input type="checkbox" checked={!!sel[p.id]} onChange={e => setSel({ ...sel, [p.id]: e.target.checked })} className="absolute start-2 top-2 h-4 w-4" />}
@@ -1911,9 +1920,9 @@ function Utilisateurs() {
 /* ───────────────────────── Application ───────────────────────── */
 const NAV = {
   admin: [
-    { k: 'dash', fr: 'Tableau de bord', ar: 'لوحة القيادة', ic: 'dash' },
-    { k: 'stock', fr: 'Gestion (stock · achats · fournisseurs)', ar: 'الإدارة (مخزون · مشتريات · موردون)', ic: 'box' },
     { k: 'ventes', fr: 'Ventes · Comptoir', ar: 'المبيعات · الصندوق', ic: 'cart' },
+    { k: 'dash', fr: 'Tableau de bord', ar: 'لوحة القيادة', ic: 'dash' },
+    { k: 'stock', fr: 'Gestion de stock', ar: 'إدارة المخزون', ic: 'box' },
     { k: 'fid', fr: 'Système de fidélité', ar: 'نظام الولاء', ic: 'star' },
     { k: 'bons', fr: "Bons d'achat", ar: 'قسائم الشراء', ic: 'gift' },
     { k: 'users', fr: 'Utilisateurs', ar: 'المستخدمون', ic: 'user' },
@@ -1938,6 +1947,112 @@ const ROLES = [
   { k: 'fournisseur', fr: 'Fournisseur', ar: 'المورد', ic: 'truck' },
   { k: 'client', fr: 'Client', ar: 'الزبون', ic: 'user' },
 ];
+/* ───────────────────────── Inventaire ───────────────────────── */
+function Inventaire() {
+  const { db, act, t, pn, money, toast, lang } = useApp();
+  const [q, setQ] = useState('');
+  const [counts, setCounts] = useState({});
+  const [onlyDiff, setOnlyDiff] = useState(false);
+  const norm = x => String(x || '').toLowerCase();
+  const prods = db.products.filter(p => !q || norm(p.name + p.ar + p.sku).includes(norm(q)));
+  const diffOf = v => { const c = counts[v.id]; return c === undefined || c === '' ? null : Math.max(0, Math.floor(Number(c) || 0)) - v.stock; };
+  const allV = db.products.flatMap(p => p.variants.map(v => ({ v, p })));
+  const counted = allV.filter(x => diffOf(x.v) !== null).length;
+  const diffs = allV.filter(x => diffOf(x.v) !== null && diffOf(x.v) !== 0);
+  const gap = diffs.reduce((a, x) => a + diffOf(x.v) * x.p.cost, 0);
+  const validate = async () => {
+    if (!diffs.length) { toast(t('Aucun écart à corriger', 'لا توجد فروقات'), 'err'); return; }
+    if (!confirm(t(`Corriger le stock de ${diffs.length} variante(s) d’après votre comptage ?`, `تصحيح مخزون ${diffs.length} متغير حسب الجرد؟`))) return;
+    const items = diffs.map(x => ({ variant_id: x.v.id, delta: diffOf(x.v) }));
+    const done = await act(() => must(sb.rpc('adjust_stock', { p_items: items, p_note: 'Inventaire ' + today() })), t(`Inventaire validé : ${items.length} correction(s)`, `تم اعتماد الجرد: ${items.length} تصحيح`));
+    if (done) setCounts({});
+  };
+  const printSheet = () => {
+    const rows = prods.flatMap(p => p.variants.map(v => `<tr><td>${escH(p.name)}</td><td>${escH(vLabel(v, 'fr') || 'Standard')}</td><td>${escH(v.sku)}</td><td class="r">${v.stock}</td><td></td></tr>`)).join('');
+    printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>Inventaire</title><style>${A4_CSS}</style></head><body><h1>Feuille d’inventaire</h1><div class="muted">Magasin DJ · ${today()}</div><table><thead><tr><th>Produit</th><th>Variante</th><th>SKU</th><th class="r">Système</th><th style="width:90px">Compté</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
+  };
+  return (
+    <div>
+      <PageTitle title={t('Inventaire', 'الجرد')} sub={t('Saisissez les quantités comptées : les écarts corrigent le stock à la validation.', 'أدخل الكميات المعدودة: تُصحَّح الفروقات عند الاعتماد.')}
+        right={<div className="flex gap-2"><Btn v="ghost" onClick={printSheet}><Icon n="receipt" s={15} />{t('Feuille à imprimer', 'ورقة للطباعة')}</Btn><Btn onClick={validate} disabled={!diffs.length}><Icon n="check" s={15} />{t('Valider l’inventaire', 'اعتماد الجرد')}</Btn></div>} />
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <Card className="p-4"><div className="text-xs text-zinc-500">{t('Variantes comptées', 'متغيرات معدودة')}</div><div className="tabular mt-1 text-xl font-bold">{counted} <span className="text-sm font-medium text-zinc-400">/ {allV.length}</span></div></Card>
+        <Card className={`p-4 ${diffs.length ? 'bg-amber-50' : ''}`}><div className="text-xs text-zinc-500">{t('Écarts', 'الفروقات')}</div><div className="tabular mt-1 text-xl font-bold">{diffs.length}</div></Card>
+        <Card className="p-4"><div className="text-xs text-zinc-500">{t('Valeur de l’écart (coût)', 'قيمة الفرق (التكلفة)')}</div><div className={`tabular mt-1 text-xl font-bold ${gap < 0 ? 'text-rose-600' : gap > 0 ? 'text-emerald-600' : ''}`}>{gap > 0 ? '+' : ''}{money(gap)}</div></Card>
+      </div>
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center gap-3 p-3">
+          <div className="relative min-w-48 flex-1"><Icon n="search" s={15} className="absolute start-3 top-2.5 text-zinc-400" /><Input value={q} onChange={e => setQ(e.target.value)} placeholder={t('Rechercher nom ou SKU…', 'ابحث بالاسم أو الرمز…')} className="ps-9" /></div>
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-zinc-600"><input type="checkbox" checked={onlyDiff} onChange={e => setOnlyDiff(e.target.checked)} />{t('Écarts seulement', 'الفروقات فقط')}</label>
+          {counted > 0 && <button onClick={() => setCounts({})} className="text-xs text-rose-600 underline">{t('Effacer le comptage', 'مسح الجرد')}</button>}
+        </div>
+        <div className="divide-y divide-zinc-100">
+          {prods.map(p => {
+            const vs = p.variants.filter(v => !onlyDiff || (diffOf(v) !== null && diffOf(v) !== 0));
+            if (!vs.length) return null;
+            return (
+              <div key={p.id} className="p-3">
+                <div className="mb-1.5 flex items-center gap-2"><Thumb p={p} cls="h-8 w-8 rounded-lg" txt="text-sm" /><div className="min-w-0"><div className="truncate text-sm font-semibold">{pn(p)}</div><div className="font-mono text-[11px] text-zinc-500">{p.sku}</div></div></div>
+                <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+                  {vs.map(v => { const d = diffOf(v); const c = v.color ? parseColor(v.color) : null; return (
+                    <div key={v.id} className={`flex items-center gap-2 rounded-2xl px-3 py-1.5 text-sm ${d ? 'bg-amber-50' : 'bg-zinc-50'}`}>
+                      {c && <span className="inline-block h-3.5 w-3.5 shrink-0 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}
+                      <span className="min-w-0 flex-1 truncate">{vLabel(v, lang) || t('Standard', 'قياسي')}</span>
+                      <span className="tabular w-10 text-end text-xs text-zinc-500" title={t('Stock système', 'مخزون النظام')}>{v.stock}</span>
+                      <input type="number" min="0" value={counts[v.id] === undefined ? '' : counts[v.id]} onChange={e => setCounts({ ...counts, [v.id]: e.target.value })} placeholder="—" className="tabular w-16 rounded-full border border-zinc-200 bg-white px-2 py-1 text-center text-sm outline-none focus:ring-2 focus:ring-zinc-900/10" />
+                      <span className={`tabular w-10 text-end text-xs font-semibold ${d > 0 ? 'text-emerald-600' : d < 0 ? 'text-rose-600' : 'text-zinc-300'}`}>{d === null ? '' : d > 0 ? '+' + d : d}</span>
+                    </div>); })}
+                </div>
+              </div>
+            );
+          })}
+          {prods.length === 0 && <div className="p-8 text-center text-sm text-zinc-500">{t('Aucun produit', 'لا توجد منتجات')}</div>}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ───────────────────────── Bons de réception ───────────────────────── */
+function Receptions() {
+  const { db, t, money, lang } = useApp();
+  const rows = db.receipts.map(r => {
+    const po = db.purchases.find(x => x.id === r.poId);
+    const sup = po && db.suppliers.find(x => x.id === po.supplierId);
+    const lines = r.lines.map(l => {
+      const p = db.products.find(x => x.id === l.pid);
+      const pl = po && po.lines.find(x => x.vid === l.vid);
+      const cost = pl ? pl.cost : (p ? p.cost : 0);
+      return { name: p ? p.name : '?', label: p ? vLabelOf(p, l.vid, 'fr') : '', qty: l.qty, cost };
+    });
+    return { ...r, poRef: po ? po.ref : '—', supName: sup ? sup.name : '—', lines, qty: lines.reduce((a, l) => a + l.qty, 0), value: lines.reduce((a, l) => a + l.qty * l.cost, 0) };
+  });
+  const print = r => {
+    const body = r.lines.map(l => `<tr><td>${escH(l.name)}${l.label ? ' (' + escH(l.label) + ')' : ''}</td><td class="r">${l.qty}</td><td class="r">${l.cost}</td><td class="r">${l.qty * l.cost}</td></tr>`).join('');
+    printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>${r.no}</title><style>${A4_CSS}</style></head><body><h1>Bon de réception ${r.no}</h1><div class="muted">Magasin DJ · ${escH(r.at.slice(0, 10))}</div><h2>Fournisseur : ${escH(r.supName)} · Commande ${escH(r.poRef)}</h2><table><thead><tr><th>Article</th><th class="r">Qté reçue</th><th class="r">Coût unit. (DA)</th><th class="r">Total (DA)</th></tr></thead><tbody>${body}<tr><th>Total</th><th class="r">${r.qty}</th><th></th><th class="r">${r.value}</th></tr></tbody></table><p style="margin-top:40px">Signature : ____________________</p></body></html>`);
+  };
+  return (
+    <div>
+      <PageTitle title={t('Bons de réception', 'سندات الاستلام')} sub={t('Un bon est créé à chaque réception de marchandise (onglet Achats → Réceptionner).', 'يُنشأ سند عند كل استلام للبضاعة (المشتريات ← استلام).')} />
+      <div className="grid gap-3 lg:grid-cols-2">
+        {rows.map(r => (
+          <Card key={r.id} className="p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div><div className="font-bold">{r.no}</div><div className="text-xs text-zinc-500">{r.at.slice(0, 10)} · {t('Commande', 'الطلب')} {r.poRef} · {r.supName}</div></div>
+              <Btn v="ghost" className="!px-3 !py-1 text-xs" onClick={() => print(r)}><Icon n="receipt" s={13} />{t('Imprimer', 'طباعة')}</Btn>
+            </div>
+            <div className="mt-3 space-y-1">
+              {r.lines.map((l, i) => <div key={i} className="flex items-center justify-between rounded-2xl bg-zinc-50 px-3 py-1.5 text-sm"><span className="min-w-0 truncate">{l.name}{l.label && <span className="ms-1 text-xs text-zinc-500">({l.label})</span>}</span><span className="tabular shrink-0 font-semibold">+{l.qty}</span></div>)}
+            </div>
+            <div className="mt-3 flex justify-between border-t border-zinc-100 pt-2 text-sm"><span className="text-zinc-500">{r.qty} {t('pièces reçues', 'قطعة مستلمة')}</span><span className="tabular font-bold">{money(r.value)}</span></div>
+          </Card>
+        ))}
+      </div>
+      {rows.length === 0 && <Card className="p-10 text-center text-sm text-zinc-500">{t('Aucune réception pour le moment', 'لا يوجد استلام حتى الآن')}</Card>}
+    </div>
+  );
+}
+
 function PosEntry() { const { role } = useApp(); return role === 'admin' ? <Hub tabs={VENTES_TABS} initial="comptoir" /> : <POS />; }
 function Hub({ tabs, initial }) {
   const { t, lang } = useApp();
@@ -1946,8 +2061,8 @@ function Hub({ tabs, initial }) {
   const go = k => { setTab(k); setSeen(x => ({ ...x, [k]: true })); };
   return (
     <div>
-      <div className="mb-5 flex flex-wrap gap-1.5 rounded-2xl bg-zinc-100 p-1.5">
-        {tabs.map(x => <button key={x.k} onClick={() => go(x.k)} className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${tab === x.k ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-800'}`}><Icon n={x.ic} s={15} />{lang === 'ar' ? x.ar : x.fr}</button>)}
+      <div className="mb-5 inline-flex max-w-full flex-wrap gap-1 rounded-full bg-white p-1.5 shadow-sm">
+        {tabs.map(x => <button key={x.k} onClick={() => go(x.k)} className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${tab === x.k ? 'bg-zinc-900 text-white' : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800'}`}><Icon n={x.ic} s={15} />{lang === 'ar' ? x.ar : x.fr}</button>)}
       </div>
       {tabs.map(x => seen[x.k] && <div key={x.k} className={tab === x.k ? '' : 'hidden'}><x.C /></div>)}
     </div>
@@ -1955,7 +2070,9 @@ function Hub({ tabs, initial }) {
 }
 const GESTION_TABS = [
   { k: 'produits', fr: 'Produits & stock', ar: 'المنتجات والمخزون', ic: 'box', C: () => <StockView /> },
+  { k: 'inventaire', fr: 'Inventaire', ar: 'الجرد', ic: 'check', C: Inventaire },
   { k: 'achat', fr: 'Achats', ar: 'المشتريات', ic: 'truck', C: Achats },
+  { k: 'recep', fr: 'Bons de réception', ar: 'سندات الاستلام', ic: 'receipt', C: Receptions },
   { k: 'fourn', fr: 'Fournisseurs', ar: 'الموردون', ic: 'users', C: Fournisseurs },
 ];
 const VENTES_TABS = [
@@ -2057,31 +2174,31 @@ function Shell({ session, lang, setLang }) {
   return (
     <Ctx.Provider value={ctx}>
       <div className="flex min-h-screen flex-col">
-        <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/85 backdrop-blur">
+        <header className="sticky top-0 z-30 bg-[#e6e6e8]/85 backdrop-blur">
           <div className="flex h-14 items-center gap-3 px-4">
             <div className="flex items-center gap-2.5">
-              <div className="grid h-8 w-8 place-items-center rounded-lg bg-zinc-900 text-[13px] font-extrabold tracking-tight text-white">DJ</div>
-              <div className="hidden leading-tight sm:block"><div className="text-sm font-semibold">Magasin</div><div className="text-[11px] text-zinc-500">{t('Gestion du magasin', 'إدارة المتجر')}</div></div>
+              <div className="text-xl font-black uppercase tracking-tight">DJ</div>
+              <div className="hidden leading-tight sm:block"><div className="text-sm font-extrabold uppercase tracking-wide">Magasin</div><div className="text-[11px] text-zinc-500">{t('Gestion du magasin', 'إدارة المتجر')}</div></div>
             </div>
             <div className="ms-auto flex items-center gap-2">
               <div className="hidden text-end leading-tight sm:block"><div className="max-w-[180px] truncate text-xs font-semibold">{profile.full_name || session.user.email}</div><div className="text-[11px] text-zinc-500">{(ROLES.find(r => r.k === role) || {})[lang === 'ar' ? 'ar' : 'fr']}</div></div>
-              <button onClick={() => setLang(lang === 'fr' ? 'ar' : 'fr')} className="flex items-center gap-1 rounded-xl border border-zinc-200 px-2.5 py-1.5 text-xs font-semibold hover:bg-zinc-50"><Icon n="globe" s={14} />{lang === 'fr' ? 'عربي' : 'FR'}</button>
+              <button onClick={() => setLang(lang === 'fr' ? 'ar' : 'fr')} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50"><Icon n="globe" s={14} />{lang === 'fr' ? 'عربي' : 'FR'}</button>
               {role === 'admin' || role === 'vendeur' ? <Notifs /> : null}
               <button onClick={() => act(async () => {}, t('Données actualisées', 'تم تحديث البيانات'))} title={t('Actualiser', 'تحديث')} className={`rounded-xl p-2 text-zinc-500 hover:bg-zinc-100 ${busy ? 'animate-spin' : ''}`}><Icon n="refresh" s={16} /></button>
-              <button onClick={logout} className="rounded-xl border border-zinc-200 px-2.5 py-1.5 text-xs font-semibold hover:bg-zinc-50">{t('Déconnexion', 'خروج')}</button>
+              <button onClick={logout} className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50">{t('Déconnexion', 'خروج')}</button>
             </div>
           </div>
         </header>
 
         <div className="flex flex-1">
-          <aside className="hidden w-60 shrink-0 flex-col gap-1 border-e border-zinc-200 bg-white p-3 md:flex">
+          <aside className="hidden w-60 shrink-0 flex-col gap-1 p-3 md:flex">
             <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">{lang === 'ar' ? ROLE_LABEL[role][1] : ROLE_LABEL[role][0]}</div>
             {NAV[role].map(n => (
-              <button key={n.k} onClick={() => setView(n.k)} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium transition ${navKey === n.k ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}>
+              <button key={n.k} onClick={() => setView(n.k)} className={`flex items-center gap-2.5 rounded-full px-4 py-2.5 text-sm font-semibold transition ${navKey === n.k ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-white'}`}>
                 <Icon n={n.ic} s={16} />{lang === 'ar' ? n.ar : n.fr}
               </button>
             ))}
-            <div className="mt-auto rounded-xl bg-zinc-50 p-3 text-[11px] leading-relaxed text-zinc-500">{t('Données en direct. Stock : Vente −, Achat réceptionné +.', 'بيانات مباشرة. المخزون: البيع يخصم والاستلام يضيف.')}</div>
+            <div className="mt-auto rounded-2xl bg-white/60 p-3 text-[11px] leading-relaxed text-zinc-500">{t('Données en direct. Stock : Vente −, Achat réceptionné +.', 'بيانات مباشرة. المخزون: البيع يخصم والاستلام يضيف.')}</div>
           </aside>
           <main className="min-w-0 flex-1 p-4 md:p-6">
             <div className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 md:hidden">
@@ -2132,7 +2249,7 @@ function AuthScreen({ lang, setLang }) {
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-2.5"><div className="grid h-9 w-9 place-items-center rounded-lg bg-zinc-900 text-sm font-extrabold text-white">DJ</div><div className="leading-tight"><div className="font-semibold">Magasin</div><div className="text-[11px] text-zinc-500">{t('Site web officiel & ERP', 'الموقع الرسمي ونظام الإدارة')}</div></div></div>
-          <button onClick={() => setLang(lang === 'fr' ? 'ar' : 'fr')} className="flex items-center gap-1 rounded-xl border border-zinc-200 px-2.5 py-1.5 text-xs font-semibold hover:bg-zinc-50"><Icon n="globe" s={14} />{lang === 'fr' ? 'عربي' : 'FR'}</button>
+          <button onClick={() => setLang(lang === 'fr' ? 'ar' : 'fr')} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold hover:bg-zinc-50"><Icon n="globe" s={14} />{lang === 'fr' ? 'عربي' : 'FR'}</button>
         </div>
         <Card className="p-6">
           <h1 className="text-xl font-bold tracking-tight">{mode === 'login' ? t('Connexion', 'تسجيل الدخول') : t('Créer un compte client', 'إنشاء حساب زبون')}</h1>
