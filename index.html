@@ -112,7 +112,7 @@ const PO_TO = Object.fromEntries(Object.entries(PO_FROM).map(([k, v]) => [v, k])
 const BGS = ['bg-slate-100', 'bg-rose-100', 'bg-amber-100', 'bg-emerald-100', 'bg-yellow-100', 'bg-blue-100', 'bg-indigo-100', 'bg-violet-100', 'bg-lime-100', 'bg-red-100'];
 const bgOf = k => BGS[[...String(k)].reduce((a, c) => a + c.charCodeAt(0), 0) % BGS.length];
 const cap = x => x ? x.charAt(0).toUpperCase() + x.slice(1) : 'Bronze';
-const EMPTY_DB = { products: [], suppliers: [], clients: [], sales: [], purchases: [], vouchers: [], receipts: [], staff: [], rules: DEFAULT_RULES };
+const EMPTY_DB = { products: [], suppliers: [], clients: [], sales: [], purchases: [], vouchers: [], receipts: [], expenses: [], staff: [], rules: DEFAULT_RULES };
 
 const ERR = {
   INSUFFICIENT_STOCK: ['Stock insuffisant', 'مخزون غير كافٍ'], INSUFFICIENT_POINTS: ['Points insuffisants', 'نقاط غير كافية'],
@@ -154,6 +154,7 @@ async function loadAll(role) {
     role === 'admin' ? (async () => { const r = await sb.rpc('admin_list_users'); return r.data || []; })() : Promise.resolve([]),
     (role === 'admin' || role === 'vendeur') ? (async () => { return (await sb.from('stock_movements').select('variant_id,product_id,delta,ref_id,created_at,note,created_by').eq('reason', 'purchase_receipt').order('created_at', { ascending: true }).limit(2000)).data || []; })() : Promise.resolve([]),
   ]);
+  const exps = role === 'client' ? [] : await rows(sb.from('expenses').select('*').order('created_at', { ascending: false }).limit(2000));
   const rcMap = new Map();
   mvs.forEach(m => { const k = m.ref_id + '|' + m.created_at; if (!rcMap.has(k)) rcMap.set(k, { id: k, poId: m.ref_id, at: m.created_at, note: m.note || '', by: m.created_by, lines: [] }); rcMap.get(k).lines.push({ vid: m.variant_id, pid: m.product_id, qty: m.delta }); });
   const receipts = [...rcMap.values()].map((r, i) => ({ ...r, no: 'BR-' + String(i + 1).padStart(4, '0') })).reverse();
@@ -172,6 +173,7 @@ async function loadAll(role) {
     suppliers: sups.map(x => ({ id: x.id, name: x.name, contact: x.contact_name || '', email: x.email || '', city: x.city || '', leadDays: x.lead_days, rating: Number(x.rating || 0) })),
     clients,
     receipts,
+    expenses: exps.map(e => ({ id: e.id, label: e.label, amount: Number(e.amount), at: e.created_at, by: e.by_name || '' })),
     staff: staff.filter(u => u.role === 'admin' || u.role === 'vendeur').map(u => ({ id: u.id, name: staffName[u.id], role: u.role })),
     sales: sales.map(x => ({
       id: x.id, ref: x.ref, date: x.created_at.slice(0, 10), channel: x.channel === 'web' ? 'Web' : 'POS', clientId: x.client_id,
@@ -538,6 +540,7 @@ const IC = {
   eye: ['M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z', 'M12 9m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0'],
   zap: ['M13 2L3 14h9l-1 8 10-12h-9z'],
   globe: ['M12 22m-10 0a10 10 0 1 0 20 0a10 10 0 1 0-20 0', 'M2 12h20', 'M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20z'],
+  wallet: ['M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h16v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7', 'M16 14h2'],
   barcode: ['M4 5v14', 'M7 5v14', 'M11 5v14', 'M14 5v14', 'M17 5v14', 'M20 5v14'],
   camera: ['M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z', 'M12 13m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0'],
   tag: ['M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z', 'M7 7h.01'],
@@ -2341,7 +2344,7 @@ function ThemePicker() {
     </div>
   );
 }
-function PosEntry() { const { role } = useApp(); return role === 'admin' ? <Hub tabs={VENTES_TABS} initial="comptoir" /> : <POS />; }
+function PosEntry() { const { role } = useApp(); return role === 'admin' ? <Hub tabs={VENTES_TABS} initial="comptoir" /> : <Hub tabs={COMPTOIR_TABS} initial="comptoir" />; }
 function Hub({ tabs, initial }) {
   const { t, lang } = useApp();
   const [tab, setTab] = useState(initial);
@@ -2395,10 +2398,60 @@ const STOCKV_TABS = [
   { k: 'recep', fr: 'Bons de réception', ar: 'سندات الاستلام', ic: 'receipt', C: Receptions },
   { k: 'fourn', fr: 'Fournisseurs', ar: 'الموردون', ic: 'users', C: Fournisseurs },
 ];
+function Charges() {
+  const { db, act, t, money, role, session } = useApp();
+  const [label, setLabel] = useState('');
+  const [amount, setAmount] = useState('');
+  const [from, setFrom] = useState(today());
+  const [to, setTo] = useState(today());
+  const fmtDT = iso => { const d = new Date(iso); return d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); };
+  const day = iso => { const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  const rows = db.expenses.filter(e => (!from || day(e.at) >= from) && (!to || day(e.at) <= to));
+  const total = rows.reduce((a, e) => a + e.amount, 0);
+  const valid = label.trim() && Number(amount) > 0;
+  const add = async () => {
+    const who = (session && session.user && (session.user.user_metadata && session.user.user_metadata.full_name || (session.user.email || '').split('@')[0])) || '';
+    const ok = await act(async () => { await must(sb.from('expenses').insert({ label: label.trim(), amount: Number(amount), by_name: who })); }, t('Charge enregistrée', 'تم تسجيل المصروف'));
+    if (ok) { setLabel(''); setAmount(''); }
+  };
+  const del = e => confirm(t('Supprimer cette charge ?', 'حذف هذا المصروف؟')) && act(async () => { await must(sb.from('expenses').delete().eq('id', e.id)); }, t('Charge supprimée', 'تم حذف المصروف'));
+  const print = () => printHTML(`<!doctype html><html><head><meta charset="utf-8"><title>Charges</title><style>${A4_CSS}</style></head><body><div style="display:flex;align-items:center;gap:10px;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px"><img src="${LOGO_EMB}" style="height:48px"><b style="font-size:16px;letter-spacing:1px">DJEB'S OFFICIAL</b></div><h1>Charges ${escH(from)} → ${escH(to)}</h1><table><thead><tr><th>Date & heure</th><th>Achat / charge</th><th>Par</th><th style="text-align:right">Montant</th></tr></thead><tbody>${rows.map(e => `<tr><td>${escH(fmtDT(e.at))}</td><td>${escH(e.label)}</td><td>${escH(e.by)}</td><td style="text-align:right">${escH(money(e.amount))}</td></tr>`).join('')}</tbody><tfoot><tr><th colspan="3" style="text-align:right">Total</th><th style="text-align:right">${escH(money(total))}</th></tr></tfoot></table></body></html>`);
+  return (
+    <div>
+      <PageTitle title={t('Charges', 'المصاريف')} sub={t('Ce que le magasin a acheté, en dinars', 'ما اشتراه المحل بالدينار')} right={<Btn v="ghost" onClick={print}><Icon n="receipt" s={14} />{t('Imprimer', 'طباعة')}</Btn>} />
+      <Card className="mb-4 p-5">
+        <form onSubmit={e => { e.preventDefault(); if (valid) add(); }} className="grid gap-3 sm:grid-cols-[1fr_180px_auto] sm:items-end">
+          <Field label={t('Qu’avez-vous acheté ?', 'ماذا اشتريت؟')}><Input value={label} onChange={e => setLabel(e.target.value)} placeholder={t('Ex. sacs d’emballage, café, nettoyage…', 'مثال: أكياس، قهوة، تنظيف…')} /></Field>
+          <Field label={t('Montant (DA)', 'المبلغ (دج)')}><Input type="number" inputMode="decimal" min="0" value={amount} onChange={e => setAmount(e.target.value)} className="tabular" dir="ltr" /></Field>
+          <Btn type="submit" disabled={!valid}><Icon n="plus" s={15} />{t('Ajouter', 'إضافة')}</Btn>
+        </form>
+        <div className="mt-2 text-xs text-zinc-500">{t('La date et l’heure sont enregistrées automatiquement.', 'يتم تسجيل التاريخ والوقت تلقائياً.')}</div>
+      </Card>
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+        <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="!w-auto" /><span className="text-zinc-400">→</span><Input type="date" value={to} onChange={e => setTo(e.target.value)} className="!w-auto" />
+        <button className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs" onClick={() => { setFrom(today()); setTo(today()); }}>{t('Aujourd’hui', 'اليوم')}</button>
+        <button className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs" onClick={() => { setFrom(today().slice(0, 8) + '01'); setTo(today()); }}>{t('Ce mois', 'هذا الشهر')}</button>
+        <button className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs" onClick={() => { setFrom(''); setTo(''); }}>{t('Tout', 'الكل')}</button>
+        <div className="ms-auto rounded-full bg-rose-50 px-4 py-1.5 font-semibold text-rose-700 tabular">{t('Total', 'المجموع')} : {money(total)}</div>
+      </div>
+      <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-sm">
+        <thead className="bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500"><tr>{[t('Date & heure', 'التاريخ والوقت'), t('Achat / charge', 'المصروف'), t('Par', 'بواسطة'), t('Montant', 'المبلغ'), ''].map((h, i) => <th key={i} className="px-4 py-3 text-start font-semibold">{h}</th>)}</tr></thead>
+        <tbody className="divide-y divide-zinc-100">
+          {rows.map(e => <tr key={e.id}><td className="tabular whitespace-nowrap px-4 py-3 text-zinc-500">{fmtDT(e.at)}</td><td className="px-4 py-3 font-medium">{e.label}</td><td className="px-4 py-3 text-zinc-500">{e.by || '—'}</td><td className="tabular px-4 py-3 font-semibold">{money(e.amount)}</td><td className="px-4 py-3 text-end">{role === 'admin' && <button onClick={() => del(e)} className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50"><Icon n="trash" s={14} /></button>}</td></tr>)}
+          {rows.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-zinc-500">{t('Aucune charge sur cette période', 'لا توجد مصاريف في هذه الفترة')}</td></tr>}
+        </tbody></table></div></Card>
+    </div>
+  );
+}
 const VENTES_TABS = [
   { k: 'comptoir', fr: 'Comptoir', ar: 'الصندوق', ic: 'cart', C: POS },
   { k: 'journal', fr: 'Journal de vente', ar: 'سجل المبيعات', ic: 'receipt', C: Ventes },
+  { k: 'charges', fr: 'Charges', ar: 'المصاريف', ic: 'wallet', C: Charges },
   { k: 'pts', fr: 'Points vendeurs', ar: 'نقاط البائعين', ic: 'star', C: Points },
+];
+const COMPTOIR_TABS = [
+  { k: 'comptoir', fr: 'Comptoir', ar: 'الصندوق', ic: 'cart', C: POS },
+  { k: 'charges', fr: 'Charges', ar: 'المصاريف', ic: 'wallet', C: Charges },
 ];
 const VIEWS = {
   dash: Dashboard,
@@ -2488,7 +2541,7 @@ function Shell({ session, lang, setLang }) {
     </Card></div>
   );
 
-  const ctx = { db, act, reload, busy, toast, t, lang, pn, money, role, view, setView, supplierId, setSupplierId, clientId, setClientId, quote, checkout, rules: db.rules, setReceipt, userId: session.user.id };
+  const ctx = { db, act, reload, busy, toast, t, lang, pn, money, role, view, setView, supplierId, setSupplierId, clientId, setClientId, quote, checkout, rules: db.rules, setReceipt, userId: session.user.id, session };
   const View = VIEWS[view] || Dashboard;
   const navKey = role === 'admin' ? ({ achat: 'stock', fourn: 'stock', pos: 'ventes' }[view] || view) : view;
 
