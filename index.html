@@ -918,7 +918,9 @@ function EditProductModal({ p, onClose }) {
     if (!f.name.trim() || !f.sku.trim()) { toast(t('Nom et SKU requis', 'الاسم والرمز مطلوبان'), 'err'); return; }
     const done = await act(async () => {
       await must(sb.from('products').update({ name: f.name.trim(), name_ar: f.ar.trim() || null, sku: f.sku.trim().toUpperCase(), category: CAT_TO[f.cat], price: +f.price || 0, cost: +f.cost || 0, reorder_level: Math.max(0, Math.floor(+f.reorder) || 0), supplier_id: f.sup || null, fabric: f.fabric.trim() || null, emoji: f.emoji.trim() || '🏷️' }).eq('id', p.id));
-      await must(sb.rpc('save_variants', { p_product_id: p.id, p_variants: packVariants(variants, f.sku) }));
+      const oldS = p.sku, newS = f.sku.trim().toUpperCase();
+      const vars = oldS === newS ? variants : variants.map(v => { const k = (v.sku || '').toUpperCase(); return { ...v, sku: k.startsWith(oldS) ? newS + k.slice(oldS.length) : '' }; });
+      await must(sb.rpc('save_variants', { p_product_id: p.id, p_variants: packVariants(vars, newS) }));
     }, t('Produit mis à jour', 'تم تحديث المنتج'));
     if (done) onClose();
   };
