@@ -161,7 +161,7 @@ async function loadAll(role) {
   const staffName = Object.fromEntries(staff.map(u => [u.id, u.full_name || (u.email || '').split('@')[0]]));
   const pPrice = Object.fromEntries(prods.map(x => [x.id, Number(x.price)]));
   const imgBy = {};
-  (role === 'client' ? [] : await rows(sb.from('variant_images').select('id,variant_id,url,position').order('position').order('created_at'))).forEach(i => { (imgBy[i.variant_id] = imgBy[i.variant_id] || []).push({ id: i.id, url: i.url }); });
+  (await rows(sb.from('variant_images').select('id,variant_id,url,position').order('position').order('created_at'))).forEach(i => { (imgBy[i.variant_id] = imgBy[i.variant_id] || []).push({ id: i.id, url: i.url }); });
   const byP = {};
   vars.forEach(v => { (byP[v.product_id] = byP[v.product_id] || []).push({ images: imgBy[v.id] || [], id: v.id, pid: v.product_id, color: v.color || '', size: v.size || '', sku: v.sku || '', priceOverride: role === 'client' || v.price === null ? null : Number(v.price), price: v.price === null || v.price === undefined ? pPrice[v.product_id] : Number(v.price), stock: v.stock }); });
   const sizeIdx = z => { const i = SIZE_ORDER.indexOf(z); return i < 0 ? 999 : i; };
@@ -434,20 +434,29 @@ function VariantEditor({ baseSku, variants, setVariants }) {
   );
 }
 
+const colorImgs = (p, col) => { const seen = new Set(); const out = []; p.variants.filter(v => (v.color || '') === (col || '')).forEach(v => (v.images || []).forEach(i => { if (!seen.has(i.url)) { seen.add(i.url); out.push(i.url); } })); return out; };
 function VariantPicker({ p, onPick, onClose }) {
   const { t, lang, money, pn } = useApp();
   const colors = [...new Set(p.variants.map(v => v.color || ''))];
   const [col, setCol] = useState(() => (p.variants.find(v => v.stock > 0) || p.variants[0] || {}).color || '');
   const sizes = p.variants.filter(v => (v.color || '') === col);
+  const imgs = colorImgs(p, col); const gal = imgs.length ? imgs : (p.img ? [p.img] : []);
+  const [gi, setGi] = useState(0); useEffect(() => setGi(0), [col]);
   const cname = c => { if (!c) return t('Standard', 'قياسي'); const x = parseColor(c); return lang === 'ar' && x.ar ? x.ar : x.label; };
   return (
     <Modal title={pn(p)} onClose={onClose}>
+      {gal.length > 0 && (
+        <div className="mb-4">
+          <div className="aspect-[4/3] overflow-hidden rounded-2xl bg-zinc-100"><img key={gal[gi] || gal[0]} src={gal[gi] || gal[0]} alt="" className="h-full w-full object-cover" /></div>
+          {gal.length > 1 && <div className="mt-2 flex gap-1.5 overflow-x-auto">{gal.map((u, i) => <button key={u} type="button" onClick={() => setGi(i)} className={`h-12 w-12 shrink-0 overflow-hidden rounded-lg border-2 ${i === gi ? 'border-zinc-900' : 'border-transparent opacity-70'}`}><img src={u} alt="" className="h-full w-full object-cover" /></button>)}</div>}
+        </div>
+      )}
       {(colors.length > 1 || colors[0]) && (
         <div className="mb-4">
           <div className="mb-1.5 text-xs font-medium text-zinc-500">{t('Couleur', 'اللون')}</div>
           <div className="flex flex-wrap gap-2">
             {colors.map(c => { const x = c ? parseColor(c) : null; const tot = p.variants.filter(v => (v.color || '') === c).reduce((a, v) => a + v.stock, 0);
-              return <button key={c} type="button" onClick={() => setCol(c)} className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm transition ${col === c ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-200 hover:border-zinc-400'} ${tot <= 0 ? 'opacity-50' : ''}`}>{x && <span className="inline-block h-4 w-4 rounded-full border border-zinc-300" style={dotStyle(x.hex)} />}{cname(c)}</button>; })}
+              return <button key={c} type="button" onClick={() => setCol(c)} className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm transition ${col === c ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-200 hover:border-zinc-400'} ${tot <= 0 ? 'opacity-50' : ''}`}>{colorImgs(p, c)[0] ? <img src={colorImgs(p, c)[0]} alt="" className="h-9 w-9 rounded-lg object-cover" /> : x && <span className="inline-block h-4 w-4 rounded-full border border-zinc-300" style={dotStyle(x.hex)} />}{cname(c)}</button>; })}
           </div>
         </div>
       )}
@@ -1098,10 +1107,63 @@ function ImportModal({ onClose }) {
   );
 }
 const MV_REASON = { sale: ['Vente', 'بيع'], purchase_receipt: ['Réception', 'استلام'], adjustment: ['Ajustement', 'تعديل'], inventory: ['Inventaire', 'جرد'], return: ['Retour', 'إرجاع'], initial: ['Stock initial', 'مخزون أولي'] };
+function ColorPhotosModal({ p, onClose }) {
+  const { db, act, t, lang, pn } = useApp();
+  const pv = db.products.find(x => x.id === p.id)?.variants || p.variants;
+  const colors = [...new Set(pv.map(v => v.color || ''))];
+  const [busy, setBusy] = useState('');
+  const [big, setBig] = useState(null);
+  const cname = c => { if (!c) return t('Standard', 'قياسي'); const x = parseColor(c); return lang === 'ar' && x.ar ? x.ar : x.label; };
+  const idsOf = c => pv.filter(v => (v.color || '') === c).map(v => v.id);
+  const add = async (c, e) => {
+    const files = [...e.target.files].filter(f => /^image\//.test(f.type)); e.target.value = ''; if (!files.length) return;
+    const ids = idsOf(c); let pos = colorImgs({ variants: pv }, c).length; setBusy(c);
+    await act(async () => {
+      for (const f of files) {
+        const blob = await shrinkImage(f);
+        const path = `${p.id}/c-${Date.now()}-${pos}.jpg`;
+        const up = await sb.storage.from('magasin-products').upload(path, blob, { contentType: 'image/jpeg' });
+        if (up.error) throw up.error;
+        const url = sb.storage.from('magasin-products').getPublicUrl(path).data.publicUrl;
+        await must(sb.from('variant_images').insert(ids.map(id => ({ variant_id: id, product_id: p.id, url, position: pos }))));
+        pos++;
+      }
+    }, t('Photos ajoutées', 'تمت إضافة الصور'));
+    setBusy('');
+  };
+  const del = (c, url) => act(() => must(sb.from('variant_images').delete().eq('url', url).in('variant_id', idsOf(c))), t('Photo supprimée', 'تم حذف الصورة'));
+  const cover = (c, url) => act(async () => { const order = [url, ...colorImgs({ variants: pv }, c).filter(u => u !== url)]; for (let i = 0; i < order.length; i++) await must(sb.from('variant_images').update({ position: i }).eq('url', order[i]).in('variant_id', idsOf(c))); }, t('Photo principale définie', 'تم تحديد الصورة الرئيسية'));
+  return (
+    <Modal title={`${t('Photos par couleur', 'صور حسب اللون')} · ${pn(p)}`} onClose={onClose} wide>
+      <div className="space-y-3">
+        {colors.map(c => { const x = c ? parseColor(c) : null; const imgs = colorImgs({ variants: pv }, c); return (
+          <div key={c} className="rounded-2xl border border-zinc-100 p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">{x && <span className="inline-block h-4 w-4 rounded-full border border-zinc-300" style={dotStyle(x.hex)} />}{cname(c)}<span className="text-xs font-normal text-zinc-400">{idsOf(c).length} {t('tailles', 'مقاسات')}</span></div>
+            <div className="flex flex-wrap gap-2">
+              {imgs.map((u, i) => (
+                <div key={u} className="group relative h-20 w-20 overflow-hidden rounded-xl bg-zinc-100">
+                  <img src={u} alt="" onClick={() => setBig(u)} className="h-full w-full cursor-zoom-in object-cover" />
+                  {i === 0 && <span className="absolute start-1 top-1 rounded-full bg-zinc-900 px-1.5 text-[9px] font-semibold text-white">★</span>}
+                  <div className="absolute inset-x-0 bottom-0 flex justify-end gap-1 bg-gradient-to-t from-black/60 p-0.5">
+                    {i !== 0 && <button onClick={() => cover(c, u)} className="rounded bg-white/90 px-1 text-[10px] font-semibold">★</button>}
+                    <button onClick={() => del(c, u)} className="rounded bg-white/90 p-0.5 text-rose-600"><Icon n="trash" s={11} /></button>
+                  </div>
+                </div>))}
+              <label className={`flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed border-zinc-300 text-[10px] text-zinc-500 hover:bg-zinc-50 ${busy === c ? 'pointer-events-none opacity-50' : ''}`}><Icon n="camera" s={18} />{busy === c ? '…' : t('Ajouter', 'إضافة')}<input type="file" accept="image/*" multiple className="hidden" onChange={e => add(c, e)} /></label>
+            </div>
+          </div>); })}
+      </div>
+      {big && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/80 p-4" onClick={() => setBig(null)}><img src={big} alt="" className="max-h-full max-w-full rounded-xl" /></div>}
+      <div className="mt-4 flex justify-end"><Btn onClick={onClose}>{t('Fermer', 'إغلاق')}</Btn></div>
+    </Modal>
+  );
+}
 function VariantModal({ p, v, readonly, onClose }) {
   const { db, act, t, lang, pn, toast } = useApp();
-  const live = (db.products.find(x => x.id === p.id)?.variants || []).find(x => x.id === v.id) || v;
-  const [tab, setTab] = useState('photos');
+  const pv = db.products.find(x => x.id === p.id)?.variants || p.variants;
+  const live = pv.find(x => x.id === v.id) || v;
+  const group = live.color ? pv.filter(x => (x.color || '') === live.color) : [live];
+  const [tab, setTab] = useState('mv');
   const [mv, setMv] = useState(null);
   const [busy, setBusy] = useState(false);
   const [big, setBig] = useState(null);
@@ -1119,13 +1181,15 @@ function VariantModal({ p, v, readonly, onClose }) {
         const up = await sb.storage.from('magasin-products').upload(path, blob, { contentType: 'image/jpeg' });
         if (up.error) throw up.error;
         const url = sb.storage.from('magasin-products').getPublicUrl(path).data.publicUrl;
-        await must(sb.from('variant_images').insert({ variant_id: v.id, product_id: p.id, url, position: pos++ }));
+        await must(sb.from('variant_images').insert(group.map(g => ({ variant_id: g.id, product_id: p.id, url, position: pos }))));
+        pos++;
       }
     }, t('Photos ajoutées', 'تمت إضافة الصور'));
     setBusy(false);
   };
-  const del = img => act(() => must(sb.from('variant_images').delete().eq('id', img.id)), t('Photo supprimée', 'تم حذف الصورة'));
-  const cover = async img => { const rest = live.images.filter(x => x.id !== img.id); await act(async () => { const order = [img, ...rest]; for (let i = 0; i < order.length; i++) await must(sb.from('variant_images').update({ position: i }).eq('id', order[i].id)); }, t('Photo principale définie', 'تم تحديد الصورة الرئيسية')); };
+  const gids = group.map(g => g.id);
+  const del = img => act(() => must(sb.from('variant_images').delete().eq('url', img.url).in('variant_id', gids)), t('Photo supprimée', 'تم حذف الصورة'));
+  const cover = async img => { const order = [img.url, ...live.images.filter(x => x.url !== img.url).map(x => x.url)]; await act(async () => { for (let i = 0; i < order.length; i++) await must(sb.from('variant_images').update({ position: i }).eq('url', order[i]).in('variant_id', gids)); }, t('Photo principale définie', 'تم تحديد الصورة الرئيسية')); };
   const c = live.color ? parseColor(live.color) : null;
   const reasonLabel = r => { const m = MV_REASON[r]; return m ? (lang === 'ar' ? m[1] : m[0]) : r; };
   return (
@@ -1134,7 +1198,7 @@ function VariantModal({ p, v, readonly, onClose }) {
         {c && <span className="inline-block h-4 w-4 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}
         <span className="font-mono text-xs text-zinc-500">{live.sku}</span><span className="ms-auto tabular rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold">{t('Stock', 'المخزون')} : {live.stock}</span>
       </div>
-      <div className="mb-3 flex gap-2">{[['photos', t('Photos', 'الصور') + ` (${live.images.length})`], ['mv', t('Mouvements', 'الحركات') + (mv ? ` (${mv.length})` : '')]].map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={`rounded-full px-4 py-1.5 text-sm font-semibold ${tab === k ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600'}`}>{l}</button>)}</div>
+      <div className="mb-3 flex gap-2">{[['mv', t('Mouvements', 'الحركات') + (mv ? ` (${mv.length})` : '')]].map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={`rounded-full px-4 py-1.5 text-sm font-semibold ${tab === k ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600'}`}>{l}</button>)}</div>
       {tab === 'photos' && (
         <div>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
@@ -1190,6 +1254,7 @@ function StockView({ readonly }) {
   const [labelP, setLabelP] = useState(null);
   const [importing, setImporting] = useState(false);
   const [varOpen, setVarOpen] = useState(null);
+  const [photoP, setPhotoP] = useState(null);
   const rows = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar + p.sku).toLowerCase().includes(q.toLowerCase())));
   const totalValue = db.products.reduce((s, p) => s + p.stock * p.cost, 0);
   const lowCount = db.products.filter(p => p.stock <= p.reorder).length;
@@ -1260,13 +1325,14 @@ function StockView({ readonly }) {
                     <div key={v.id} className="flex items-center gap-1.5 rounded-lg bg-zinc-50 px-1.5 py-1 text-xs">
                       {v.images && v.images[0] ? <img src={v.images[0].url} alt="" className="h-6 w-6 shrink-0 rounded object-cover" /> : c && <span className="inline-block h-3 w-3 shrink-0 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}
                       <span className="min-w-0 flex-1 truncate">{vLabel(v, lang) || t('Standard', 'قياسي')}</span>
-                      <button onClick={() => setVarOpen({ p, v })} title={t('Photos & mouvements', 'الصور والحركات')} className="shrink-0 rounded-md border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600 hover:bg-zinc-100">{(v.images || []).length ? `📷${v.images.length}` : '📷'} · ⇅</button>
+                      <button onClick={() => setVarOpen({ p, v })} title={t('Mouvements de stock', 'حركات المخزون')} className="shrink-0 rounded-md border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600 hover:bg-zinc-100">⇅ {t('Mouvements', 'الحركات')}</button>
                       {readonly ? <span className="tabular font-semibold">{v.stock}</span> : <NumInput value={v.stock} onCommit={n => setStock(v.id, n)} className="tabular w-14 rounded-md border border-zinc-200 bg-white px-1 py-0.5 text-center text-xs outline-none focus:ring-2 focus:ring-zinc-900/10" />}
                     </div>); })}
                 </div>
               )}
               <div className="mt-2 flex gap-1 border-t border-zinc-100 pt-2">
-                {p.variants.length === 1 && <button onClick={() => setVarOpen({ p, v: p.variants[0] })} title={t('Photos & mouvements', 'الصور والحركات')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="camera" s={14} /></button>}
+                {p.variants.length === 1 && <button onClick={() => setVarOpen({ p, v: p.variants[0] })} title={t('Mouvements de stock', 'حركات المخزون')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="receipt" s={14} /></button>}
+                {!readonly && <button onClick={() => setPhotoP(p)} title={t('Photos par couleur', 'صور حسب اللون')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="camera" s={14} /></button>}
                 <button onClick={() => setLabelP(p)} title={t('Codes-barres / étiquettes', 'الباركود / الملصقات')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="barcode" s={14} /></button>
                 {!readonly && <>
                 <button onClick={() => setEditing(p)} title={t('Modifier', 'تعديل')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="edit" s={14} /></button>
@@ -1281,6 +1347,7 @@ function StockView({ readonly }) {
       </Card>
       {adding && <AddProductModal onClose={() => setAdding(false)} />}
       {importing && <ImportModal onClose={() => setImporting(false)} />}
+      {photoP && <ColorPhotosModal p={photoP} onClose={() => setPhotoP(null)} />}
       {varOpen && <VariantModal p={varOpen.p} v={varOpen.v} readonly={readonly} onClose={() => setVarOpen(null)} />}
       {editing && <EditProductModal p={editing} onClose={() => setEditing(null)} />}
       {labelP && <LabelsModal p={labelP} onClose={() => setLabelP(null)} />}
