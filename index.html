@@ -309,8 +309,8 @@ function ColorPicker({ value, onChange }) {
   const [q, setQ] = useState('');
   const [name, setName] = useState('');
   const [hex, setHex] = useState('#c19a6b');
-  const shown = COLORS.filter(c => !q || (c.fr + ' ' + c.ar).toLowerCase().includes(q.toLowerCase()));
-  const shownCustom = db.colors.filter(c => !q || c.name.toLowerCase().includes(q.toLowerCase()));
+  const shown = smartFind(COLORS, q, c => c.fr + ' ' + c.ar);
+  const shownCustom = smartFind(db.colors, q, c => c.name);
   const addCustom = async () => {
     const n = name.trim().replace(/[,:]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!n) { toast(t('Donnez un nom à la couleur', 'أعط اللون اسماً'), 'err'); return; }
@@ -407,6 +407,53 @@ function SizePicker({ value, onChange }) {
 /* Variantes (couleur × taille) */
 const vLabel = (v, lang) => { const c = v.color ? parseColor(v.color) : null; const col = c ? (lang === 'ar' && c.ar ? c.ar : c.label) : ''; return [col, v.size].filter(Boolean).join(' / '); };
 const vLabelOf = (p, vid, lang) => { const v = p && p.variants.find(x => x.id === vid); return v ? vLabel(v, lang) : ''; };
+/* ───────────────────────── Recherche intelligente ───────────────────────── */
+const SYN = { black: 'noir', white: 'blanc', blue: 'bleu', red: 'rouge', green: 'vert', yellow: 'jaune', pink: 'rose', grey: 'gris', gray: 'gris', brown: 'marron', beige: 'beige', orange: 'orange', purple: 'violet', navy: 'marine', men: 'hommes', man: 'hommes', homme: 'hommes', women: 'femmes', woman: 'femmes', femme: 'femmes', kids: 'enfants', kid: 'enfants', enfant: 'enfants', pants: 'pantalon', pant: 'pantalon', jeans: 'jean', shirt: 'chemise', sweater: 'pull', hoodie: 'sweat', jacket: 'veste', coat: 'manteau', shoes: 'chaussures', dress: 'robe', skirt: 'jupe', shorts: 'short' };
+const sNorm = x => String(x === null || x === undefined ? '' : x).toLowerCase().normalize('NFD').replace(/[̀-ًͯ-ٰٟ]/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/œ/g, 'oe').replace(/[^a-z0-9؀-ۿ]+/g, ' ').trim();
+const lev = (a, b, max) => {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let pp = null, prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]; let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      let v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (pp && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, pp[j - 2] + 1);
+      cur[j] = v; if (v < best) best = v;
+    }
+    if (best > max) return max + 1; pp = prev; prev = cur;
+  }
+  return prev[b.length];
+};
+// score d'un mot de la requête contre un texte déjà normalisé (0 = pas de correspondance)
+function tokenScore(tok, text, words) {
+  if (!tok) return 1;
+  const alts = SYN[tok] ? [tok, SYN[tok]] : [tok];
+  let best = 0;
+  for (const tk of alts) {
+    if (words.includes(tk)) best = Math.max(best, 5);
+    else if (words.some(w => w.startsWith(tk))) best = Math.max(best, 4);
+    else if (text.includes(tk)) best = Math.max(best, 3);
+    else if (tk.length >= 4 && !/^\d+$/.test(tk)) {
+      const max = tk.length >= 8 ? 2 : 1;
+      if (words.some(w => lev(tk, w.slice(0, tk.length + 1), max) <= max || lev(tk, w, max) <= max)) best = Math.max(best, 2);
+    }
+  }
+  return best;
+}
+// filtre + classe par pertinence ; tous les mots doivent correspondre (accents/casse/fautes légères tolérés)
+function smartFind(items, query, textFn) {
+  const toks = sNorm(query).split(' ').filter(Boolean);
+  if (!toks.length) return items;
+  const out = [];
+  for (const it of items) {
+    const text = sNorm(textFn(it)); const words = text.split(' ');
+    let sc = 0, ok = true;
+    for (const tk of toks) { const s1 = tokenScore(tk, text, words); if (!s1) { ok = false; break; } sc += s1; }
+    if (ok) out.push([sc, it]);
+  }
+  return out.sort((a, b) => b[0] - a[0]).map(x => x[1]);
+}
+const prodText = (p, sup) => [p.name, p.ar, p.sku, p.cat, p.fabric, sup, ...p.variants.flatMap(v => { const c = v.color ? parseColor(v.color) : null; const ca = c && COLORS.find(x => x.fr.toLowerCase() === c.label.toLowerCase()); return [c && c.label, ca && ca.ar, v.size, v.sku]; })].filter(Boolean).join(' ');
 const autoSku = (base, color, size) => [String(base || '').trim(), color && parseColor(color).label.replace(/[^A-Za-z0-9]/g, '').slice(0, 4), size && String(size).replace(/\s+/g, '')].filter(Boolean).join('-').toUpperCase();
 const packVariants = (list, baseSku) => { const used = new Set(); return list.map(v => ({ id: v.id || null, color: v.color || null, size: v.size || null, sku: (v.sku && v.sku.trim() ? v.sku : autoSku(baseSku, v.color, v.size)).toUpperCase(), price: v.price === '' || v.price === null || v.price === undefined ? null : +v.price, stock: Math.max(0, Math.floor(+v.stock) || 0) })).map(v => { let k = v.sku, n = 2; while (used.has(k)) k = `${v.sku}-${n++}`; used.add(k); return { ...v, sku: k }; }); };
 
@@ -1278,7 +1325,7 @@ function StockView({ readonly }) {
   const [importing, setImporting] = useState(false);
   const [varOpen, setVarOpen] = useState(null);
   const [photoP, setPhotoP] = useState(null);
-  const rows = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar + p.sku).toLowerCase().includes(q.toLowerCase())));
+  const rows = smartFind(db.products.filter(p => cat === 'Toutes' || p.cat === cat), q, p => prodText(p, (db.suppliers.find(x => x.id === p.sup) || {}).name));
   const totalValue = db.products.reduce((s, p) => s + p.stock * p.cost, 0);
   const lowCount = db.products.filter(p => p.stock <= p.reorder).length;
   const selIds = Object.keys(sel).filter(k => sel[k]);
@@ -1822,7 +1869,7 @@ function ClientSearch({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const sel = db.clients.find(c => c.id === value);
   const norm = x => String(x || '').toLowerCase();
-  const hits = db.clients.filter(c => !q || norm(c.name + ' ' + c.phone + ' ' + c.email).includes(norm(q))).slice(0, 8);
+  const hits = smartFind(db.clients, q, c => `${c.name} ${c.phone} ${String(c.phone || '').replace(/\D/g, '')} ${c.email}`).slice(0, 8);
   if (sel) return (
     <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm">
       <span className="min-w-0 flex-1 truncate font-medium">{sel.name}<span className="ms-2 text-xs font-normal text-violet-700">{fmtNum(sel.pts)} pts</span></span>
@@ -1907,7 +1954,7 @@ function POS() {
   const [clientId, setClientId] = useState('');
   const [code, setCode] = useState('');
   const [usePts, setUsePts] = useState(0);
-  const products = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar + p.sku).toLowerCase().includes(q.toLowerCase())));
+  const products = smartFind(db.products.filter(p => cat === 'Toutes' || p.cat === cat), q, p => prodText(p));
   const [picking, setPicking] = useState(null);
   const addV = (p, v) => {
     if (v.stock <= 0) return;
@@ -2035,7 +2082,7 @@ function Storefront() {
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState('');
   const [usePts, setUsePts] = useState(0);
-  let list = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar).toLowerCase().includes(q.toLowerCase())));
+  let list = smartFind(db.products.filter(p => cat === 'Toutes' || p.cat === cat), q, p => prodText(p));
   if (sort === 'asc') list = [...list].sort((a, b) => a.price - b.price);
   if (sort === 'desc') list = [...list].sort((a, b) => b.price - a.price);
   const [picking, setPicking] = useState(null);
@@ -2367,7 +2414,7 @@ function Inventaire() {
   const [open, setOpen] = useState({});
   const [selC, setSelC] = useState({});
   const norm = x => String(x || '').toLowerCase();
-  const prods = db.products.filter(p => !q || norm(p.name + p.ar + p.sku).includes(norm(q)));
+  const prods = smartFind(db.products, q, p => prodText(p));
   const diffOf = v => { const c = counts[v.id]; return c === undefined || c === '' ? null : Math.max(0, Math.floor(Number(c) || 0)) - v.stock; };
   const allV = db.products.flatMap(p => p.variants.map(v => ({ v, p })));
   const counted = allV.filter(x => diffOf(x.v) !== null).length;
