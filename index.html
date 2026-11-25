@@ -639,14 +639,17 @@ const Badge = ({ tone = 'zinc', children }) => {
 const Input = ({ className = '', ...p }) => <input {...p} className={`ui-input w-full rounded-full border border-transparent bg-zinc-100 px-4 py-2 text-sm outline-none transition focus:border-zinc-300 focus:bg-white focus:ring-2 focus:ring-zinc-900/10 ${className}`} />;
 const Select = ({ children, className = '', ...p }) => <select {...p} className={`ui-input w-full rounded-full border border-transparent bg-zinc-100 px-4 py-2 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-zinc-900/10 ${className}`}>{children}</select>;
 const Field = ({ label, children }) => <label className="block"><span className="mb-1 block text-xs font-medium text-zinc-500">{label}</span>{children}</label>;
-const Modal = ({ title, onClose, children, wide }) => (
-  <div className="fade-up fixed inset-0 z-50 grid place-items-center bg-zinc-900/40 p-4 backdrop-blur-sm">
+const Modal = ({ title, onClose, children, wide }) => {
+  useEffect(() => { const prev = document.body.style.overflow; document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = prev; }; }, []);
+  const node = (
+  <div className="fade-up fixed inset-0 z-50 grid place-items-center bg-zinc-900/40 p-4 backdrop-blur-sm" onClick={onClose}>
     <div onClick={e => e.stopPropagation()} className={`ui-card max-h-[90vh] w-full overflow-auto rounded-3xl bg-white shadow-2xl ${wide ? 'max-w-2xl' : 'max-w-md'}`}>
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-100 bg-white px-5 py-4"><h3 className="font-semibold">{title}</h3><button onClick={onClose} aria-label="Fermer" className="rounded-lg bg-zinc-100 p-1.5 hover:bg-zinc-200"><Icon n="x" /></button></div>
       <div className="p-5">{children}</div>
     </div>
-  </div>
-);
+  </div>);
+  return typeof document !== 'undefined' && typeof ReactDOM !== 'undefined' && ReactDOM.createPortal ? ReactDOM.createPortal(node, document.body) : node;
+};
 const PageTitle = ({ title, sub, right }) => (
   <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
     <div><h1 className="text-3xl font-extrabold tracking-tight">{title}</h1>{sub && <p className="mt-0.5 text-sm text-zinc-500">{sub}</p>}</div>
@@ -1325,6 +1328,7 @@ function StockView({ readonly }) {
   const [importing, setImporting] = useState(false);
   const [varOpen, setVarOpen] = useState(null);
   const [photoP, setPhotoP] = useState(null);
+  const [cardCol, setCardCol] = useState({});
   const rows = smartFind(db.products.filter(p => cat === 'Toutes' || p.cat === cat), q, p => prodText(p, (db.suppliers.find(x => x.id === p.sup) || {}).name));
   const totalValue = db.products.reduce((s, p) => s + p.stock * p.cost, 0);
   const lowCount = db.products.filter(p => p.stock <= p.reorder).length;
@@ -1369,11 +1373,24 @@ function StockView({ readonly }) {
         <div className="grid grid-cols-2 gap-3 p-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {rows.map(p => (
             <div key={p.id} className={`flex flex-col rounded-3xl border bg-white p-3 transition hover:shadow-md ${sel[p.id] ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-200'}`}>
-              <div className="relative">
-                <PhotoButton p={p} readonly={readonly} size="h-24 w-full" txt="text-4xl" />
+              {(() => { const cols = [...new Set(p.variants.map(v => v.color || ''))].filter(Boolean); const cc = cardCol[p.id] !== undefined ? cardCol[p.id] : (cols[0] || ''); const cimg = (colorImgs(p, cc)[0]) || p.img || (cols.map(c => colorImgs(p, c)[0]).find(Boolean)) || '';
+                const ab = 'grid h-8 w-8 place-items-center rounded-full bg-white/95 shadow ring-1 ring-black/10 hover:bg-white';
+                return (<>
+              <div className="relative overflow-hidden rounded-2xl">
+                {cimg ? <img src={cimg} alt="" loading="lazy" className="aspect-[3/4] w-full object-cover" /> : <PhotoButton p={p} readonly={readonly} size="aspect-[3/4] w-full" txt="text-5xl" />}
                 {!readonly && <input type="checkbox" checked={!!sel[p.id]} onChange={e => setSel({ ...sel, [p.id]: e.target.checked })} className="absolute start-2 top-2 h-4 w-4" />}
-                <div className="pointer-events-none absolute end-1.5 top-1.5"><StockBadge p={p} /></div>
+                <div className="absolute end-1.5 top-1.5 flex flex-col gap-1.5">
+                  {!readonly && <button onClick={() => setEditing(p)} title={t('Modifier', 'تعديل')} className={ab}><Icon n="edit" s={15} /></button>}
+                  {!readonly && <button onClick={() => dupProduct(p)} title={t('Dupliquer', 'نسخ')} className={ab}><Icon n="copy" s={15} /></button>}
+                  {!readonly && <button onClick={() => setPhotoP(p)} title={t('Photos par couleur', 'صور حسب اللون')} className={ab}><Icon n="camera" s={15} /></button>}
+                  <button onClick={() => setLabelP(p)} title={t('Codes-barres / étiquettes', 'الباركود / الملصقات')} className={ab}><Icon n="barcode" s={15} /></button>
+                  {!readonly && <button onClick={() => delProduct(p)} title={t('Supprimer', 'حذف')} className={ab + ' !text-rose-600'}><Icon n="trash" s={15} /></button>}
+                </div>
+                <div className="pointer-events-none absolute bottom-1.5 start-1.5"><StockBadge p={p} /></div>
               </div>
+              {cols.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{cols.map(c => { const x = parseColor(c); const im = colorImgs(p, c)[0]; return (
+                <button key={c} onClick={() => setCardCol({ ...cardCol, [p.id]: c })} title={x.label} className={`h-9 w-9 overflow-hidden rounded-lg border-2 transition ${cc === c ? 'border-zinc-900' : 'border-zinc-200 opacity-80 hover:opacity-100'}`}>{im ? <img src={im} alt="" className="h-full w-full object-cover" /> : <span className="block h-full w-full" style={dotStyle(x.hex)} />}</button>); })}</div>}
+              </>); })()}
               <div className="mt-2 min-w-0">
                 {readonly ? <div className="truncate text-sm font-semibold">{pn(p)}</div> : <button onClick={() => setEditing(p)} className="block w-full truncate text-start text-sm font-semibold hover:underline">{pn(p)}</button>}
                 <div className="flex items-center justify-between text-[11px] text-zinc-500"><span className="truncate font-mono">{p.sku}</span><span>{lang === 'ar' ? CAT_AR[p.cat] : p.cat}</span></div>
@@ -1383,6 +1400,7 @@ function StockView({ readonly }) {
                   {p.variants.length <= 1 && !readonly && p.variants[0]
                     ? <NumInput value={p.variants[0].stock} onCommit={v => setStock(p.variants[0].id, v)} className="tabular w-16 rounded-lg border border-zinc-200 px-1.5 py-0.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-zinc-900/10" />
                     : <div className="tabular text-lg font-bold leading-tight">{p.stock}</div>}
+                  {p.variants.length === 1 && <button onClick={() => setVarOpen({ p, v: p.variants[0] })} className="mt-1 rounded-md border border-zinc-200 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600 hover:bg-zinc-100">⇅ {t('Mouvements', 'الحركات')}</button>}
                 </div>
                 <div className="text-end"><div className="text-[10px] uppercase tracking-wide text-zinc-400">{t('Valeur', 'القيمة')}</div><div className="tabular text-xs font-medium">{money(p.stock * p.cost)}</div></div>
               </div>
@@ -1400,16 +1418,6 @@ function StockView({ readonly }) {
                     </div>); })}
                 </div>
               )}
-              <div className="mt-2 flex gap-1 border-t border-zinc-100 pt-2">
-                {p.variants.length === 1 && <button onClick={() => setVarOpen({ p, v: p.variants[0] })} title={t('Mouvements de stock', 'حركات المخزون')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="receipt" s={14} /></button>}
-                {!readonly && <button onClick={() => setPhotoP(p)} title={t('Photos par couleur', 'صور حسب اللون')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="camera" s={14} /></button>}
-                <button onClick={() => setLabelP(p)} title={t('Codes-barres / étiquettes', 'الباركود / الملصقات')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="barcode" s={14} /></button>
-                {!readonly && <>
-                <button onClick={() => setEditing(p)} title={t('Modifier', 'تعديل')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="edit" s={14} /></button>
-                <button onClick={() => dupProduct(p)} title={t('Dupliquer', 'نسخ')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="copy" s={14} /></button>
-                <button onClick={() => delProduct(p)} title={t('Supprimer', 'حذف')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-rose-600 hover:bg-rose-50"><Icon n="trash" s={14} /></button>
-                </>}
-              </div>
             </div>
           ))}
         </div>
