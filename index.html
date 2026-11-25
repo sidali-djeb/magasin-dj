@@ -160,8 +160,10 @@ async function loadAll(role) {
   const receipts = [...rcMap.values()].map((r, i) => ({ ...r, no: 'BR-' + String(i + 1).padStart(4, '0') })).reverse();
   const staffName = Object.fromEntries(staff.map(u => [u.id, u.full_name || (u.email || '').split('@')[0]]));
   const pPrice = Object.fromEntries(prods.map(x => [x.id, Number(x.price)]));
+  const imgBy = {};
+  (role === 'client' ? [] : await rows(sb.from('variant_images').select('id,variant_id,url,position').order('position').order('created_at'))).forEach(i => { (imgBy[i.variant_id] = imgBy[i.variant_id] || []).push({ id: i.id, url: i.url }); });
   const byP = {};
-  vars.forEach(v => { (byP[v.product_id] = byP[v.product_id] || []).push({ id: v.id, pid: v.product_id, color: v.color || '', size: v.size || '', sku: v.sku || '', priceOverride: role === 'client' || v.price === null ? null : Number(v.price), price: v.price === null || v.price === undefined ? pPrice[v.product_id] : Number(v.price), stock: v.stock }); });
+  vars.forEach(v => { (byP[v.product_id] = byP[v.product_id] || []).push({ images: imgBy[v.id] || [], id: v.id, pid: v.product_id, color: v.color || '', size: v.size || '', sku: v.sku || '', priceOverride: role === 'client' || v.price === null ? null : Number(v.price), price: v.price === null || v.price === undefined ? pPrice[v.product_id] : Number(v.price), stock: v.stock }); });
   const sizeIdx = z => { const i = SIZE_ORDER.indexOf(z); return i < 0 ? 999 : i; };
   Object.values(byP).forEach(list => list.sort((a, b) => (a.color || '').localeCompare(b.color || '') || sizeIdx(a.size) - sizeIdx(b.size)));
   const uniqJoin = (list, k) => [...new Set((list || []).map(v => v[k]).filter(Boolean))].join(', ');
@@ -1095,6 +1097,74 @@ function ImportModal({ onClose }) {
     </Modal>
   );
 }
+const MV_REASON = { sale: ['Vente', 'بيع'], purchase_receipt: ['Réception', 'استلام'], adjustment: ['Ajustement', 'تعديل'], inventory: ['Inventaire', 'جرد'], return: ['Retour', 'إرجاع'], initial: ['Stock initial', 'مخزون أولي'] };
+function VariantModal({ p, v, readonly, onClose }) {
+  const { db, act, t, lang, pn, toast } = useApp();
+  const live = (db.products.find(x => x.id === p.id)?.variants || []).find(x => x.id === v.id) || v;
+  const [tab, setTab] = useState('photos');
+  const [mv, setMv] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [big, setBig] = useState(null);
+  const staffName = Object.fromEntries(db.staff.map(u => [u.id, u.name]));
+  useEffect(() => { let off = false; (async () => { const r = await sb.from('stock_movements').select('id,delta,reason,note,created_at,created_by,ref_type').eq('variant_id', v.id).order('created_at', { ascending: false }).limit(300); if (!off) setMv(r.error ? [] : r.data); })(); return () => { off = true; }; }, [v.id, live.stock]);
+  const addFiles = async e => {
+    const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
+    setBusy(true);
+    const ok = await act(async () => {
+      let pos = live.images.length;
+      for (const f of files) {
+        if (!/^image\//.test(f.type)) continue;
+        const blob = await shrinkImage(f);
+        const path = `${p.id}/v-${v.id}-${Date.now()}-${pos}.jpg`;
+        const up = await sb.storage.from('magasin-products').upload(path, blob, { contentType: 'image/jpeg' });
+        if (up.error) throw up.error;
+        const url = sb.storage.from('magasin-products').getPublicUrl(path).data.publicUrl;
+        await must(sb.from('variant_images').insert({ variant_id: v.id, product_id: p.id, url, position: pos++ }));
+      }
+    }, t('Photos ajoutées', 'تمت إضافة الصور'));
+    setBusy(false);
+  };
+  const del = img => act(() => must(sb.from('variant_images').delete().eq('id', img.id)), t('Photo supprimée', 'تم حذف الصورة'));
+  const cover = async img => { const rest = live.images.filter(x => x.id !== img.id); await act(async () => { const order = [img, ...rest]; for (let i = 0; i < order.length; i++) await must(sb.from('variant_images').update({ position: i }).eq('id', order[i].id)); }, t('Photo principale définie', 'تم تحديد الصورة الرئيسية')); };
+  const c = live.color ? parseColor(live.color) : null;
+  const reasonLabel = r => { const m = MV_REASON[r]; return m ? (lang === 'ar' ? m[1] : m[0]) : r; };
+  return (
+    <Modal title={`${pn(p)} · ${vLabel(live, lang) || t('Standard', 'قياسي')}`} onClose={onClose} wide>
+      <div className="mb-3 flex items-center gap-2 text-sm">
+        {c && <span className="inline-block h-4 w-4 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}
+        <span className="font-mono text-xs text-zinc-500">{live.sku}</span><span className="ms-auto tabular rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold">{t('Stock', 'المخزون')} : {live.stock}</span>
+      </div>
+      <div className="mb-3 flex gap-2">{[['photos', t('Photos', 'الصور') + ` (${live.images.length})`], ['mv', t('Mouvements', 'الحركات') + (mv ? ` (${mv.length})` : '')]].map(([k, l]) => <button key={k} onClick={() => setTab(k)} className={`rounded-full px-4 py-1.5 text-sm font-semibold ${tab === k ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-600'}`}>{l}</button>)}</div>
+      {tab === 'photos' && (
+        <div>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {live.images.map((img, i) => (
+              <div key={img.id} className="group relative aspect-square overflow-hidden rounded-xl bg-zinc-100">
+                <img src={img.url} alt="" onClick={() => setBig(img.url)} className="h-full w-full cursor-zoom-in object-cover" />
+                {i === 0 && <span className="absolute start-1 top-1 rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] font-semibold text-white">{t('Principale', 'رئيسية')}</span>}
+                {!readonly && <div className="absolute inset-x-0 bottom-0 flex justify-end gap-1 bg-gradient-to-t from-black/60 p-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                  {i !== 0 && <button onClick={() => cover(img)} className="rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold">★</button>}
+                  <button onClick={() => del(img)} className="rounded-md bg-white/90 p-1 text-rose-600"><Icon n="trash" s={12} /></button>
+                </div>}
+              </div>))}
+            {!readonly && <label className={`flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-zinc-300 text-xs text-zinc-500 hover:bg-zinc-50 ${busy ? 'pointer-events-none opacity-50' : ''}`}><Icon n="camera" s={20} />{busy ? '…' : t('Ajouter des photos', 'إضافة صور')}<input type="file" accept="image/*" multiple className="hidden" onChange={addFiles} /></label>}
+          </div>
+          {live.images.length === 0 && readonly && <div className="p-6 text-center text-sm text-zinc-500">{t('Aucune photo', 'لا توجد صور')}</div>}
+          {big && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/80 p-4" onClick={() => setBig(null)}><img src={big} alt="" className="max-h-full max-w-full rounded-xl" /></div>}
+        </div>
+      )}
+      {tab === 'mv' && (
+        <div className="max-h-[50vh] overflow-auto rounded-xl border border-zinc-100">
+          {mv === null ? <div className="p-6 text-center text-sm text-zinc-500">…</div> : mv.length === 0 ? <div className="p-6 text-center text-sm text-zinc-500">{t('Aucun mouvement', 'لا توجد حركات')}</div> : (
+            <table className="w-full text-sm"><thead className="sticky top-0 bg-zinc-50 text-xs uppercase tracking-wider text-zinc-500"><tr>{[t('Date & heure', 'التاريخ والوقت'), t('Type', 'النوع'), t('Qté', 'الكمية'), t('Par', 'بواسطة'), t('Note', 'ملاحظة')].map((h, i) => <th key={i} className="px-3 py-2 text-start font-semibold">{h}</th>)}</tr></thead>
+              <tbody className="divide-y divide-zinc-100">{mv.map(m => { const d = new Date(m.created_at); return (
+                <tr key={m.id}><td className="tabular whitespace-nowrap px-3 py-2 text-zinc-500">{d.toLocaleDateString('fr-FR')} {d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td><td className="px-3 py-2">{reasonLabel(m.reason)}</td><td className={`tabular px-3 py-2 font-bold ${m.delta > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{m.delta > 0 ? '+' : ''}{m.delta}</td><td className="px-3 py-2 text-zinc-500">{staffName[m.created_by] || '—'}</td><td className="px-3 py-2 text-xs text-zinc-500">{m.note || ''}</td></tr>); })}</tbody></table>)}
+        </div>
+      )}
+      <div className="mt-4 flex justify-end"><Btn onClick={onClose}>{t('Fermer', 'إغلاق')}</Btn></div>
+    </Modal>
+  );
+}
 function StockView({ readonly }) {
   const { db, act, t, pn, money, toast, lang } = useApp();
   const dupProduct = p => act(() => must(sb.rpc('duplicate_product', { p_product_id: p.id })), t('Produit dupliqué (stock à 0) : modifiez-le', 'تم نسخ المنتج (المخزون 0): عدّله'));
@@ -1119,6 +1189,7 @@ function StockView({ readonly }) {
   const [openP, setOpenP] = useState({});
   const [labelP, setLabelP] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [varOpen, setVarOpen] = useState(null);
   const rows = db.products.filter(p => (cat === 'Toutes' || p.cat === cat) && (!q || (p.name + p.ar + p.sku).toLowerCase().includes(q.toLowerCase())));
   const totalValue = db.products.reduce((s, p) => s + p.stock * p.cost, 0);
   const lowCount = db.products.filter(p => p.stock <= p.reorder).length;
@@ -1187,13 +1258,15 @@ function StockView({ readonly }) {
                 <div className="mt-1.5 max-h-56 space-y-1 overflow-auto pe-0.5">
                   {p.variants.map(v => { const c = v.color ? parseColor(v.color) : null; return (
                     <div key={v.id} className="flex items-center gap-1.5 rounded-lg bg-zinc-50 px-1.5 py-1 text-xs">
-                      {c && <span className="inline-block h-3 w-3 shrink-0 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}
+                      {v.images && v.images[0] ? <img src={v.images[0].url} alt="" className="h-6 w-6 shrink-0 rounded object-cover" /> : c && <span className="inline-block h-3 w-3 shrink-0 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />}
                       <span className="min-w-0 flex-1 truncate">{vLabel(v, lang) || t('Standard', 'قياسي')}</span>
+                      <button onClick={() => setVarOpen({ p, v })} title={t('Photos & mouvements', 'الصور والحركات')} className="shrink-0 rounded-md border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600 hover:bg-zinc-100">{(v.images || []).length ? `📷${v.images.length}` : '📷'} · ⇅</button>
                       {readonly ? <span className="tabular font-semibold">{v.stock}</span> : <NumInput value={v.stock} onCommit={n => setStock(v.id, n)} className="tabular w-14 rounded-md border border-zinc-200 bg-white px-1 py-0.5 text-center text-xs outline-none focus:ring-2 focus:ring-zinc-900/10" />}
                     </div>); })}
                 </div>
               )}
               <div className="mt-2 flex gap-1 border-t border-zinc-100 pt-2">
+                {p.variants.length === 1 && <button onClick={() => setVarOpen({ p, v: p.variants[0] })} title={t('Photos & mouvements', 'الصور والحركات')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="camera" s={14} /></button>}
                 <button onClick={() => setLabelP(p)} title={t('Codes-barres / étiquettes', 'الباركود / الملصقات')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="barcode" s={14} /></button>
                 {!readonly && <>
                 <button onClick={() => setEditing(p)} title={t('Modifier', 'تعديل')} className="flex flex-1 justify-center rounded-lg border border-zinc-200 p-1.5 text-zinc-600 hover:bg-zinc-100"><Icon n="edit" s={14} /></button>
@@ -1208,6 +1281,7 @@ function StockView({ readonly }) {
       </Card>
       {adding && <AddProductModal onClose={() => setAdding(false)} />}
       {importing && <ImportModal onClose={() => setImporting(false)} />}
+      {varOpen && <VariantModal p={varOpen.p} v={varOpen.v} readonly={readonly} onClose={() => setVarOpen(null)} />}
       {editing && <EditProductModal p={editing} onClose={() => setEditing(null)} />}
       {labelP && <LabelsModal p={labelP} onClose={() => setLabelP(null)} />}
     </div>
