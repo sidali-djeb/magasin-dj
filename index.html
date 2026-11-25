@@ -217,7 +217,7 @@ async function uploadProductImage(file, pid) {
   await must(sb.from('products').update({ image_url: data.publicUrl }).eq('id', pid));
 }
 const Thumb = ({ p, cls = '', txt = 'text-2xl' }) => p.img
-  ? <img src={p.img} alt="" loading="lazy" className={`object-contain bg-zinc-50 ${cls}`} />
+  ? <img src={p.img} alt="" loading="lazy" className={`object-cover ${cls}`} />
   : <span className={`grid place-items-center ${cls} ${p.bg} ${txt}`}>{p.emoji}</span>;
 function PhotoButton({ p, readonly, size = 'h-10 w-10', txt = 'text-base' }) {
   const { act, t } = useApp();
@@ -464,8 +464,8 @@ function VariantPicker({ p, onPick, onClose }) {
     <Modal title={pn(p)} onClose={onClose}>
       {gal.length > 0 && (
         <div className="mb-4">
-          <div className="aspect-[4/3] overflow-hidden rounded-2xl bg-zinc-100"><img key={gal[gi] || gal[0]} src={gal[gi] || gal[0]} alt="" className="h-full w-full object-contain bg-zinc-50" /></div>
-          {gal.length > 1 && <div className="mt-2 flex gap-1.5 overflow-x-auto">{gal.map((u, i) => <button key={u} type="button" onClick={() => setGi(i)} className={`h-12 w-12 shrink-0 overflow-hidden rounded-lg border-2 ${i === gi ? 'border-zinc-900' : 'border-transparent opacity-70'}`}><img src={u} alt="" className="h-full w-full object-contain bg-zinc-50" /></button>)}</div>}
+          <div className="overflow-hidden rounded-2xl"><img key={gal[gi] || gal[0]} src={gal[gi] || gal[0]} alt="" className="mx-auto block h-auto max-h-[65vh] w-full object-contain" /></div>
+          {gal.length > 1 && <div className="mt-2 flex gap-1.5 overflow-x-auto">{gal.map((u, i) => <button key={u} type="button" onClick={() => setGi(i)} className={`h-12 w-12 shrink-0 overflow-hidden rounded-lg border-2 ${i === gi ? 'border-zinc-900' : 'border-transparent opacity-70'}`}><img src={u} alt="" className="h-full w-full object-cover" /></button>)}</div>}
         </div>
       )}
       {(colors.length > 1 || colors[0]) && (
@@ -473,7 +473,7 @@ function VariantPicker({ p, onPick, onClose }) {
           <div className="mb-1.5 text-xs font-medium text-zinc-500">{t('Couleur', 'اللون')}</div>
           <div className="flex flex-wrap gap-2">
             {colors.map(c => { const x = c ? parseColor(c) : null; const tot = p.variants.filter(v => (v.color || '') === c).reduce((a, v) => a + v.stock, 0);
-              return <button key={c} type="button" onClick={() => setCol(c)} className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm transition ${col === c ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-200 hover:border-zinc-400'} ${tot <= 0 ? 'opacity-50' : ''}`}>{colorImgs(p, c)[0] ? <img src={colorImgs(p, c)[0]} alt="" className="h-9 w-9 rounded-lg object-contain bg-zinc-50" /> : x && <span className="inline-block h-4 w-4 rounded-full border border-zinc-300" style={dotStyle(x.hex)} />}{cname(c)}</button>; })}
+              return <button key={c} type="button" onClick={() => setCol(c)} className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm transition ${col === c ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-200 hover:border-zinc-400'} ${tot <= 0 ? 'opacity-50' : ''}`}>{colorImgs(p, c)[0] ? <img src={colorImgs(p, c)[0]} alt="" className="h-9 w-9 rounded-lg object-cover" /> : x && <span className="inline-block h-4 w-4 rounded-full border border-zinc-300" style={dotStyle(x.hex)} />}{cname(c)}</button>; })}
           </div>
         </div>
       )}
@@ -1159,7 +1159,7 @@ function ColorPhotosModal({ p, onClose }) {
             <div className="flex flex-wrap gap-2">
               {imgs.map((u, i) => (
                 <div key={u} className="group relative h-20 w-20 overflow-hidden rounded-xl bg-zinc-100">
-                  <img src={u} alt="" onClick={() => setBig(u)} className="h-full w-full cursor-zoom-in object-contain bg-zinc-50" />
+                  <img src={u} alt="" onClick={() => setBig(u)} className="h-full w-full cursor-zoom-in object-cover" />
                   {i === 0 && <span className="absolute start-1 top-1 rounded-full bg-zinc-900 px-1.5 text-[9px] font-semibold text-white">★</span>}
                   <div className="absolute inset-x-0 bottom-0 flex justify-end gap-1 bg-gradient-to-t from-black/60 p-0.5">
                     {i !== 0 && <button onClick={() => cover(c, u)} className="rounded bg-white/90 px-1 text-[10px] font-semibold">★</button>}
@@ -1221,7 +1221,7 @@ function VariantModal({ p, v, readonly, onClose }) {
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             {live.images.map((img, i) => (
               <div key={img.id} className="group relative aspect-square overflow-hidden rounded-xl bg-zinc-100">
-                <img src={img.url} alt="" onClick={() => setBig(img.url)} className="h-full w-full cursor-zoom-in object-contain bg-zinc-50" />
+                <img src={img.url} alt="" onClick={() => setBig(img.url)} className="h-full w-full cursor-zoom-in object-cover" />
                 {i === 0 && <span className="absolute start-1 top-1 rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] font-semibold text-white">{t('Principale', 'رئيسية')}</span>}
                 {!readonly && <div className="absolute inset-x-0 bottom-0 flex justify-end gap-1 bg-gradient-to-t from-black/60 p-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                   {i !== 0 && <button onClick={() => cover(img)} className="rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold">★</button>}
@@ -1954,7 +1954,7 @@ function POS() {
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           {products.map(p => (
             <button key={p.id} onClick={() => add(p)} disabled={p.stock <= 0} className="group rounded-2xl border border-zinc-200 bg-white p-3 text-start transition hover:-translate-y-0.5 hover:shadow-md active:scale-[.98] disabled:opacity-50">
-              <Thumb p={p} cls="mb-2 h-20 w-full rounded-xl" txt="text-4xl" />
+              <Thumb p={p} cls="mb-2 aspect-[3/4] w-full rounded-xl" txt="text-4xl" />
               <div className="truncate text-sm font-medium">{pn(p)}</div>
               <div className="mt-1 flex items-center justify-between"><span className="tabular text-sm font-semibold">{money(p.price)}</span><span className={`tabular text-xs ${stockState(p) === 'ok' ? 'text-zinc-400' : 'text-amber-700'}`}>{p.stock} {t('en stock', 'متوفر')}</span></div>
             </button>
@@ -2090,7 +2090,7 @@ function Storefront() {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
         {list.map(p => (
           <Card key={p.id} className="group overflow-hidden transition hover:-translate-y-1 hover:shadow-lg">
-            <Thumb p={p} cls="h-44 w-full transition group-hover:scale-105" txt="text-7xl" />
+            <Thumb p={p} cls="aspect-[3/4] w-full transition group-hover:scale-105" txt="text-7xl" />
             <div className="p-4">
               <div className="text-[11px] uppercase tracking-wider text-zinc-400">{lang === 'ar' ? CAT_AR[p.cat] : p.cat}</div>
               <ColorDots value={p.color} />
