@@ -172,7 +172,7 @@ async function loadAll(role) {
   const cname = Object.fromEntries(clients.map(c => [c.id, c.name]));
   const r = rl[0];
   return {
-    products: prods.map(p => ({ id: p.id, sku: p.sku, name: p.name, ar: p.name_ar || p.name, cat: CAT_FROM[p.category] || 'Accessoires', price: Number(p.price), cost: Number(p.cost || 0), stock: p.stock, reorder: p.reorder_level, sup: p.supplier_id, fabric: p.fabric || '', color: uniqJoin(byP[p.id], 'color'), sizes: uniqJoin(byP[p.id], 'size'), variants: byP[p.id] || [], emoji: p.emoji || '🏷️', img: p.image_url || '', bg: bgOf(p.sku) })),
+    products: prods.map(p => ({ id: p.id, sku: p.sku, name: p.name, ar: p.name_ar || p.name, cat: CAT_FROM[p.category] || 'Accessoires', price: Number(p.price), cost: Number(p.cost || 0), stock: p.stock, reorder: p.reorder_level, sup: p.supplier_id, fabric: p.fabric || '', color: uniqJoin(byP[p.id], 'color'), sizes: uniqJoin(byP[p.id], 'size'), variants: byP[p.id] || [], emoji: p.emoji || '🏷️', img: p.image_url || (((byP[p.id] || []).flatMap(v => v.images || [])[0] || {}).url) || '', mainImg: p.image_url || '', bg: bgOf(p.sku) })),
     suppliers: sups.map(x => ({ id: x.id, name: x.name, contact: x.contact_name || '', email: x.email || '', city: x.city || '', leadDays: x.lead_days, rating: Number(x.rating || 0) })),
     clients,
     receipts,
@@ -1198,6 +1198,8 @@ function ColorPhotosModal({ p, onClose }) {
     }, t('Photos ajoutées', 'تمت إضافة الصور'));
     setBusy('');
   };
+  const mainUrl = (db.products.find(x => x.id === p.id) || p).mainImg || '';
+  const setMain = url => act(() => must(sb.from('products').update({ image_url: url }).eq('id', p.id)), t('Photo principale du produit définie', 'تم تحديد الصورة الرئيسية للمنتج'));
   const del = (c, url) => act(() => must(sb.from('variant_images').delete().eq('url', url).in('variant_id', idsOf(c))), t('Photo supprimée', 'تم حذف الصورة'));
   const cover = (c, url) => act(async () => { const order = [url, ...colorImgs({ variants: pv }, c).filter(u => u !== url)]; for (let i = 0; i < order.length; i++) await must(sb.from('variant_images').update({ position: i }).eq('url', order[i]).in('variant_id', idsOf(c))); }, t('Photo principale définie', 'تم تحديد الصورة الرئيسية'));
   return (
@@ -1208,15 +1210,18 @@ function ColorPhotosModal({ p, onClose }) {
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold">{x && <span className="inline-block h-4 w-4 rounded-full border border-zinc-300" style={dotStyle(x.hex)} />}{cname(c)}<span className="text-xs font-normal text-zinc-400">{idsOf(c).length} {t('tailles', 'مقاسات')}</span></div>
             <div className="flex flex-wrap gap-2">
               {imgs.map((u, i) => (
-                <div key={u} className="group relative h-20 w-20 overflow-hidden rounded-xl bg-zinc-100">
-                  <img src={u} alt="" onClick={() => setBig(u)} className="h-full w-full cursor-zoom-in object-cover" />
-                  {i === 0 && <span className="absolute start-1 top-1 rounded-full bg-zinc-900 px-1.5 text-[9px] font-semibold text-white">★</span>}
-                  <div className="absolute inset-x-0 bottom-0 flex justify-end gap-1 bg-gradient-to-t from-black/60 p-0.5">
-                    {i !== 0 && <button onClick={() => cover(c, u)} className="rounded bg-white/90 px-1 text-[10px] font-semibold">★</button>}
-                    <button onClick={() => del(c, u)} className="rounded bg-white/90 p-0.5 text-rose-600"><Icon n="trash" s={11} /></button>
+                <div key={u} className={`w-28 rounded-xl border-2 p-1 ${u === mainUrl ? 'border-zinc-900' : 'border-zinc-100'}`}>
+                  <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-zinc-100">
+                    <img src={u} alt="" onClick={() => setBig(u)} className="h-full w-full cursor-zoom-in object-cover" />
+                    {u === mainUrl && <span className="absolute start-1 top-1 rounded-full bg-zinc-900 px-1.5 py-0.5 text-[9px] font-bold text-white">{t('PRODUIT', 'المنتج')}</span>}
+                    <button onClick={() => del(c, u)} className="absolute end-1 top-1 rounded-full bg-white/90 p-1 text-rose-600" title={t('Supprimer', 'حذف')}><Icon n="trash" s={11} /></button>
+                  </div>
+                  <div className="mt-1 space-y-1">
+                    <button onClick={() => setMain(u)} disabled={u === mainUrl} className={`w-full rounded-md px-1 py-1 text-[10px] font-semibold ${u === mainUrl ? 'bg-zinc-900 text-white' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'}`}>{u === mainUrl ? t('✓ Photo du produit', '✓ صورة المنتج') : t('Photo du produit', 'صورة المنتج')}</button>
+                    <button onClick={() => cover(c, u)} disabled={i === 0} className={`w-full rounded-md px-1 py-1 text-[10px] font-semibold ${i === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'}`}>{i === 0 ? t('✓ 1ʳᵉ de la couleur', '✓ الأولى للون') : t('1ʳᵉ de la couleur', 'الأولى للون')}</button>
                   </div>
                 </div>))}
-              <label className={`flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed border-zinc-300 text-[10px] text-zinc-500 hover:bg-zinc-50 ${busy === c ? 'pointer-events-none opacity-50' : ''}`}><Icon n="camera" s={18} />{busy === c ? '…' : t('Ajouter', 'إضافة')}<input type="file" accept="image/*" multiple className="hidden" onChange={e => add(c, e)} /></label>
+              <label className={`flex aspect-[3/4] w-28 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-xl border-2 border-dashed border-zinc-300 text-[10px] text-zinc-500 hover:bg-zinc-50 ${busy === c ? 'pointer-events-none opacity-50' : ''}`}><Icon n="camera" s={18} />{busy === c ? '…' : t('Ajouter', 'إضافة')}<input type="file" accept="image/*" multiple className="hidden" onChange={e => add(c, e)} /></label>
             </div>
           </div>); })}
       </div>
@@ -1373,7 +1378,7 @@ function StockView({ readonly }) {
         <div className="grid grid-cols-2 gap-3 p-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {rows.map(p => (
             <div key={p.id} className={`flex flex-col rounded-3xl border bg-white p-3 transition hover:shadow-md ${sel[p.id] ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-200'}`}>
-              {(() => { const cols = [...new Set(p.variants.map(v => v.color || ''))].filter(Boolean); const cc = cardCol[p.id] !== undefined ? cardCol[p.id] : (cols[0] || ''); const cimg = (colorImgs(p, cc)[0]) || p.img || (cols.map(c => colorImgs(p, c)[0]).find(Boolean)) || '';
+              {(() => { const cols = [...new Set(p.variants.map(v => v.color || ''))].filter(Boolean); const cc = cardCol[p.id] !== undefined ? cardCol[p.id] : (cols[0] || ''); const cimg = (cardCol[p.id] === undefined && p.mainImg) || (colorImgs(p, cc)[0]) || p.img || (cols.map(c => colorImgs(p, c)[0]).find(Boolean)) || '';
                 const ab = 'grid h-8 w-8 place-items-center rounded-full bg-white/95 shadow ring-1 ring-black/10 hover:bg-white';
                 return (<>
               <div className="relative overflow-hidden rounded-2xl">
