@@ -112,7 +112,7 @@ const PO_TO = Object.fromEntries(Object.entries(PO_FROM).map(([k, v]) => [v, k])
 const BGS = ['bg-slate-100', 'bg-rose-100', 'bg-amber-100', 'bg-emerald-100', 'bg-yellow-100', 'bg-blue-100', 'bg-indigo-100', 'bg-violet-100', 'bg-lime-100', 'bg-red-100'];
 const bgOf = k => BGS[[...String(k)].reduce((a, c) => a + c.charCodeAt(0), 0) % BGS.length];
 const cap = x => x ? x.charAt(0).toUpperCase() + x.slice(1) : 'Bronze';
-const EMPTY_DB = { products: [], suppliers: [], clients: [], sales: [], purchases: [], vouchers: [], receipts: [], expenses: [], staff: [], rules: DEFAULT_RULES };
+const EMPTY_DB = { products: [], suppliers: [], clients: [], sales: [], purchases: [], vouchers: [], receipts: [], expenses: [], colors: [], staff: [], rules: DEFAULT_RULES };
 
 const ERR = {
   INSUFFICIENT_STOCK: ['Stock insuffisant', 'مخزون غير كافٍ'], INSUFFICIENT_POINTS: ['Points insuffisants', 'نقاط غير كافية'],
@@ -160,6 +160,7 @@ async function loadAll(role) {
   const receipts = [...rcMap.values()].map((r, i) => ({ ...r, no: 'BR-' + String(i + 1).padStart(4, '0') })).reverse();
   const staffName = Object.fromEntries(staff.map(u => [u.id, u.full_name || (u.email || '').split('@')[0]]));
   const pPrice = Object.fromEntries(prods.map(x => [x.id, Number(x.price)]));
+  const colorRows = await rows(sb.from('product_colors').select('id,name,hex').order('name'));
   const imgBy = {};
   (await rows(sb.from('variant_images').select('id,variant_id,url,position').order('position').order('created_at'))).forEach(i => { (imgBy[i.variant_id] = imgBy[i.variant_id] || []).push({ id: i.id, url: i.url }); });
   const byP = {};
@@ -175,6 +176,7 @@ async function loadAll(role) {
     suppliers: sups.map(x => ({ id: x.id, name: x.name, contact: x.contact_name || '', email: x.email || '', city: x.city || '', leadDays: x.lead_days, rating: Number(x.rating || 0) })),
     clients,
     receipts,
+    colors: colorRows.map(c => ({ id: c.id, name: c.name, hex: c.hex.toLowerCase() })),
     expenses: exps.map(e => ({ id: e.id, label: e.label, amount: Number(e.amount), at: e.created_at, by: e.by_name || '' })),
     staff: staff.filter(u => u.role === 'admin' || u.role === 'vendeur').map(u => ({ id: u.id, name: staffName[u.id], role: u.role })),
     sales: sales.map(x => ({
@@ -299,15 +301,25 @@ function ColorDots({ value }) {
   return <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">{list.map(n => { const c = parseColor(n); return <span key={n} className="inline-flex items-center gap-1 text-[11px] text-zinc-500"><span className="inline-block h-3 w-3 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />{lang === 'ar' && c.ar ? c.ar : c.label}</span>; })}</div>;
 }
 function ColorPicker({ value, onChange }) {
-  const { t, lang } = useApp();
+  const { t, lang, db, act, role, toast } = useApp();
   const sel = splitList(value);
+  const customs = db.colors.map(c => `${c.name}:${c.hex}`);
   const has = n => sel.some(x => x.toLowerCase() === n.toLowerCase());
   const toggle = n => onChange((has(n) ? sel.filter(x => x.toLowerCase() !== n.toLowerCase()) : [...sel, n]).join(', '));
   const [q, setQ] = useState('');
   const [name, setName] = useState('');
   const [hex, setHex] = useState('#c19a6b');
   const shown = COLORS.filter(c => !q || (c.fr + ' ' + c.ar).toLowerCase().includes(q.toLowerCase()));
-  const addCustom = () => { const n = name.trim().replace(/[,:]/g, ' '); const entry = `${n}:${hex}`; if (!has(entry)) onChange([...sel, entry].join(', ')); setName(''); };
+  const shownCustom = db.colors.filter(c => !q || c.name.toLowerCase().includes(q.toLowerCase()));
+  const addCustom = async () => {
+    const n = name.trim().replace(/[,:]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!n) { toast(t('Donnez un nom à la couleur', 'أعط اللون اسماً'), 'err'); return; }
+    const all = [...COLORS.map(c => c.fr), ...db.colors.map(c => c.name)];
+    if (all.some(x => x.toLowerCase() === n.toLowerCase())) { toast(t('Ce nom de couleur existe déjà', 'اسم اللون موجود بالفعل'), 'err'); return; }
+    const ok = await act(() => must(sb.from('product_colors').insert({ name: n, hex })), t('Couleur enregistrée', 'تم حفظ اللون'));
+    if (ok) { const entry = `${n}:${hex}`; if (!has(entry)) onChange([...sel, entry].join(', ')); setName(''); }
+  };
+  const delCustom = c => confirm(t(`Supprimer la couleur « ${c.name} » de la liste ? (les produits qui l’utilisent la gardent)`, `حذف اللون «${c.name}» من القائمة؟ (المنتجات التي تستخدمه تحتفظ به)`)) && act(() => must(sb.from('product_colors').delete().eq('id', c.id)), t('Couleur supprimée de la liste', 'تم حذف اللون من القائمة'));
   const lightOn = ['Blanc', 'Blanc cassé', 'Crème', 'Ivoire', 'Beige', 'Sable', 'Abricot', 'Jaune', 'Citron', 'Doré', 'Rose poudré', 'Vert menthe', 'Bleu ciel', 'Bleu glacier', 'Gris clair', 'Argent', 'Lavande', 'Lilas', 'Saumon', 'Vert pomme', 'Sauge'];
   return (
     <div className="sm:col-span-2">
@@ -320,18 +332,23 @@ function ColorPicker({ value, onChange }) {
             {has(c.fr) && <span className={`text-xs font-bold ${lightOn.includes(c.fr) ? 'text-zinc-900' : 'text-white'}`}>✓</span>}
           </button>
         ))}
-        {!shown.length && <span className="p-1 text-xs text-zinc-400">{t('Aucune couleur trouvée — créez-la ci-dessous', 'لا يوجد لون — أنشئه أدناه')}</span>}
+        {shownCustom.map(c => { const n = `${c.name}:${c.hex}`; return (
+          <span key={c.id} className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs transition ${has(n) ? 'border-zinc-900 ring-1 ring-zinc-900' : 'border-zinc-300 hover:border-zinc-500'}`}>
+            <button type="button" onClick={() => toggle(n)} title={c.name} className="flex items-center gap-1.5"><span className="inline-block h-5 w-5 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />{c.name}{has(n) && ' ✓'}</button>
+            {role === 'admin' && <button type="button" onClick={() => delCustom(c)} className="text-zinc-400 hover:text-rose-600" title={t('Supprimer de la liste', 'حذف من القائمة')}>×</button>}
+          </span>); })}
+        {!shown.length && !shownCustom.length && <span className="p-1 text-xs text-zinc-400">{t('Aucune couleur trouvée — créez-la ci-dessous', 'لا يوجد لون — أنشئه أدناه')}</span>}
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {sel.map(n => { const c = parseColor(n); return <span key={n} className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 px-2 py-0.5 text-xs"><span className="inline-block h-3 w-3 rounded-full border border-zinc-300" style={dotStyle(c.hex)} />{lang === 'ar' && c.ar ? c.ar : c.label}<button type="button" onClick={() => toggle(n)} className="text-zinc-400 hover:text-zinc-900">✕</button></span>; })}
         {!sel.length && <span className="text-xs text-zinc-400">{t('Aucune couleur choisie', 'لم يتم اختيار لون')}</span>}
       </div>
       <div className="mt-3 rounded-xl bg-zinc-50 p-3">
-        <div className="mb-2 text-xs font-medium text-zinc-500">{t('Toute autre couleur : choisissez-la sur le nuancier', 'أي لون آخر: اختره من لوحة الألوان')}</div>
+        <div className="mb-2 text-xs font-medium text-zinc-500">{t('Nouvelle couleur : choisissez-la sur le nuancier, donnez-lui un nom, elle sera enregistrée dans la base', 'لون جديد: اختره من لوحة الألوان وسمّه، سيتم حفظه في قاعدة البيانات')}</div>
         <div className="flex flex-wrap items-center gap-2">
           <input type="color" value={hex} onChange={e => setHex(e.target.value)} className="h-9 w-12 cursor-pointer rounded-lg border border-zinc-200 bg-white p-0.5" title={t('Nuancier', 'لوحة الألوان')} />
-          <Input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }} placeholder={t('Nom (facultatif)', 'الاسم (اختياري)')} className="max-w-[200px]" />
-          <Btn type="button" v="soft" onClick={addCustom}>{t('Ajouter cette couleur', 'إضافة هذا اللون')}</Btn>
+          <Input value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }} placeholder={t('Nom de la couleur (obligatoire)', 'اسم اللون (إلزامي)')} className="max-w-[240px]" />
+          <Btn type="button" v="soft" disabled={!name.trim()} onClick={addCustom}>{t('Enregistrer cette couleur', 'حفظ هذا اللون')}</Btn>
         </div>
       </div>
     </div>
@@ -1231,7 +1248,13 @@ function VariantModal({ p, v, readonly, onClose }) {
 }
 function StockView({ readonly }) {
   const { db, act, t, pn, money, toast, lang } = useApp();
-  const dupProduct = p => act(() => must(sb.rpc('duplicate_product', { p_product_id: p.id })), t('Produit dupliqué (stock à 0) : modifiez-le', 'تم نسخ المنتج (المخزون 0): عدّله'));
+  const [pendingEdit, setPendingEdit] = useState(null);
+  const dupProduct = async p => {
+    let nid = null;
+    const ok = await act(async () => { nid = await must(sb.rpc('duplicate_product', { p_product_id: p.id })); }, t('Produit dupliqué (stock à 0) : modifiez-le', 'تم نسخ المنتج (المخزون 0): عدّله'));
+    if (ok && nid) setPendingEdit(nid);
+  };
+  useEffect(() => { if (!pendingEdit) return; const np = db.products.find(x => x.id === pendingEdit); if (np) { setEditing(np); setPendingEdit(null); } }, [pendingEdit, db.products]);
   const delProduct = async p => {
     if (!confirm(t(`Supprimer « ${p.name} » ? S’il a déjà un historique (ventes, stock), il sera seulement retiré du catalogue.`, `حذف «${p.name}»؟ إذا كان له سجل (مبيعات، مخزون) فسيُزال من الكتالوج فقط.`))) return;
     let archived = false;
